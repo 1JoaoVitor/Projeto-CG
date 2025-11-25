@@ -1,68 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Importing an .obj file</title>
-    <style>
-        body {
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Importing an .obj file</title>
+      <style>
+         body {
             margin: 20px;
             padding: 0;
             background-color: white;
             font-family: Arial, sans-serif;
-        }
-        h1 {
+         }
+         h1 {
             text-align: center;
             color: #333;
             margin-bottom: 30px;
-        }
-        table {
+         }
+         table {
             border-collapse: collapse;
             margin: 0 auto;
             border: 2px solid #ddd;
-        }
-        td {
+         }
+         td {
             border: 1px solid #ccc;
             padding: 15px;
             text-align: center;
             vertical-align: middle;
             background-color: #f9f9f9;
-        }
-        h3 {
+         }
+         h3 {
             margin-top: 0;
             margin-bottom: 10px;
             color: #555;
             font-size: 14px;
-        }
-        canvas {
+         }
+         canvas {
             border: 1px solid #999;
             background-color: black;
-        }
-    </style>
-</head>
-<body>
-    <h1>Importing an .obj file</h1>
+         }
+      </style>
+   </head>
+   <body>
+      <h1>Importing an .obj file</h1>
 
-    <table>
-        <tr>
+      <table>
+         <tr>
             <td>
-                <canvas id="glCanvas" width="500" height="500"></canvas>
+               <h3>Personagens</h3>
+               <canvas
+                  id="gameCanvas"
+                  width="800"
+                  height="600"
+                  style="background: black"
+               ></canvas>
             </td>
-        </tr>
-        <tr>
-          <td>
-            <p>Press 1 for orthographic projection</p>
-            <p>Press 2 for perspective projection</p>
-            <p>Press 'x' for X-Rotation</p>
-            <p>Press 'y' for Y-Rotation</p>
-            <p>Press 'z' for Z-Rotation</p>
-          </td>
-        </tr>
-    </table>
+         </tr>
+         <tr>
+            <!-- <td>
+               <p>Press 1 for orthographic projection</p>
+               <p>Press 2 for perspective projection</p>
+               <p>Press 'x' for X-Rotation</p>
+               <p>Press 'y' for Y-Rotation</p>
+               <p>Press 'z' for Z-Rotation</p>
+            </td> -->
+         </tr>
+      </table>
 
-    <!-- Load all JavaScript files -->
-    <script src="m4.js"></script>
-    <script src="importingObj.js"></script>
-
-</body>
+      <script src="m4.js"></script>
+      <script src="importingObj.js"></script>
+   </body>
 </html>
