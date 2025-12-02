@@ -702,11 +702,56 @@ async function main() {
       gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
    }
 
+   // --- VARIÁVEIS DO AUTO-SCROLL ---
+   // A câmera começa na mesma posição Y inicial do jogador (-12 atualmente)
+   let cameraY = -12.0;
+
+   // Velocidade da câmera (unidades por segundo)
+   // Ajuste este valor: 1.0 é lento, 3.0 é rápido/difícil
+   const scrollSpeed = 0.2;
+
    let frameCount = 0;
    function drawScene(time) {
       if (!lastTime) lastTime = time;
       const dt = (time - lastTime) / 1000.0; // segundos
       lastTime = time;
+
+      cameraY += scrollSpeed * dt;
+      // 1. Onde a câmera deve focar? (Target)
+      // Visual X = player.z (movimento lateral do jogo)
+      // Visual Y = player.y + 12 (olhamos um pouco à frente para ver a estrada, como no original)
+      // Visual Z = player.x (altura do chão, geralmente 0)
+      const lookAhead = 2.0;
+      let targetX = 0.0; //player.z;
+      let targetY = cameraY + lookAhead;
+      let targetZ = player.x;
+
+      let Pref = [targetX, targetY, targetZ];
+
+      // 2. Onde a câmera está? (Eye/Position)
+      // Mantemos o deslocamento original (offset) de [0, 30, 30] em relação ao alvo
+      // Isso preserva o ângulo de 45 graus e a distância
+      let P0 = [
+         targetX + 0.0, // Segue lateralmente
+         targetY + 30.0, // Mantém altura/distância Y
+         targetZ + 30.0, // Mantém profundidade Z
+      ];
+
+      // 3. Recalcula a matriz
+      // Nota: 'V' (vetor up [0,1,0]) deve estar acessível no escopo da main
+      let viewingMatrix = m4.setViewingMatrix(P0, Pref, V);
+
+      // 4. Envia para a GPU
+      gl.uniformMatrix4fv(viewingMatrixUniformLocation, false, viewingMatrix);
+
+      // Atualiza a posição da câmera para o cálculo de brilho especular (importante!)
+      gl.uniform3fv(viewPositionUniformLocation, new Float32Array(P0));
+
+      // (Opcional) Faz a luz acompanhar o jogador para o mundo não ficar escuro lá na frente
+      let lightPos = [targetX + 40.0, targetY + 40.0, targetZ + 40.0];
+      gl.uniform3fv(lightPositionUniformLocation, new Float32Array(lightPos));
+
+      // ----------------------------------
 
       // Atualiza posição de todos os carros
       cars.forEach((car) => {
