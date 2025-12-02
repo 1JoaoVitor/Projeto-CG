@@ -38,11 +38,29 @@
             border: 1px solid #999;
             background-color: black;
          }
+         #pauseBtn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100; /* Garante que fique na frente do canvas */
+         }
+
+         #pauseBtn:hover {
+            background-color: #e68900;
+         }
       </style>
    </head>
    <body>
       <h1>Crossy Night</h1>
-
+      <button id="pauseBtn">PAUSE</button>
       <table>
          <tr>
             <td>

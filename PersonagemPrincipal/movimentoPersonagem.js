@@ -348,6 +348,8 @@ async function main() {
 
    function keyDown(event) {
       // Não previne o default se for F5/F12, mas para jogo previne scroll
+      if (isPaused) return;
+
       if (
          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
             event.code
@@ -702,6 +704,17 @@ async function main() {
       gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
    }
 
+   let isPaused = false;
+
+   const pauseBtn = document.getElementById("pauseBtn");
+   pauseBtn.addEventListener("click", () => {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? "RESUME" : "PAUSE";
+
+      // Opcional: tirar o foco do botão para que o 'Espaço' não ative o botão novamente
+      pauseBtn.blur();
+   });
+
    // --- VARIÁVEIS DO AUTO-SCROLL ---
    // A câmera começa na mesma posição Y inicial do jogador (-12 atualmente)
    let cameraY = -12.0;
@@ -712,16 +725,46 @@ async function main() {
 
    let frameCount = 0;
    function drawScene(time) {
+      // --- LÓGICA DE PAUSE ---
+      if (isPaused) {
+         // Atualizamos o lastTime para o tempo atual, assim
+         // quando despausar, o 'dt' será pequeno e não haverá salto temporal.
+         lastTime = time;
+
+         // Requisita o próximo frame (loop continua rodando, mas sem fazer nada)
+         requestAnimationFrame(drawScene);
+         return; // Sai da função aqui, impedindo qualquer movimento
+      }
+
       if (!lastTime) lastTime = time;
       const dt = (time - lastTime) / 1000.0; // segundos
       lastTime = time;
 
+      //proporções do mundo
+      const worldWidth = 6.0;
+      const aspect = gl.canvas.width / gl.canvas.height;
+      const worldHeight = worldWidth / aspect;
+
       cameraY += scrollSpeed * dt;
-      // 1. Onde a câmera deve focar? (Target)
-      // Visual X = player.z (movimento lateral do jogo)
-      // Visual Y = player.y + 12 (olhamos um pouco à frente para ver a estrada, como no original)
-      // Visual Z = player.x (altura do chão, geralmente 0)
+
+      //Verifica o limite de 1/3 da tela
+      // O centro da tela (TargetY) é "cameraY + lookAhead".
+      // A base da tela é "CenterY - worldHeight/2".
+      // A linha de 1/3 é "Base + worldHeight/3".
+      // Simplificando a matemática: Se o jogador passar dessa linha, ajustamos o cameraY.
+
       const lookAhead = 2.0;
+
+      // Essa fórmula garante que o jogador fique na linha de 1/3 visualmente
+      // CenterY = PlayerY + H/6 (H/6 é a diferença entre o meio e o 1/3 inferior)
+      // Como CenterY = cameraY + lookAhead, isolamos o cameraY:
+      const minCameraYForPlayer = player.y + worldHeight / 6.0 - lookAhead;
+
+      // Se o scroll automático estiver atrasado em relação ao jogador, puxa a câmera
+      if (cameraY < minCameraYForPlayer) {
+         cameraY = minCameraYForPlayer;
+      }
+
       let targetX = 0.0; //player.z;
       let targetY = cameraY + lookAhead;
       let targetZ = player.x;
