@@ -346,6 +346,8 @@ async function main() {
    const bodyElement = document.querySelector("body");
    bodyElement.addEventListener("keydown", keyDown, false);
 
+   const step = 1.0; // Tamanho do passo da rena
+
    function keyDown(event) {
       // Não previne o default se for F5/F12, mas para jogo previne scroll
       if (isPaused) return;
@@ -357,8 +359,6 @@ async function main() {
       ) {
          event.preventDefault();
       }
-
-      const step = 1.0; // Tamanho do passo da rena
 
       switch (
          event.key.toLowerCase() // toLowerCase permite usar 'W' ou 'w'
@@ -513,7 +513,7 @@ async function main() {
       z: 0,
       scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
       rotationY: 0, // Rotação atual
-      modelIndex: 4, // Índice no array objFiles (reindeer.obj)
+      modelIndex: 5, // Índice no array objFiles (reindeer.obj)
    };
 
    let lastTime = null;
@@ -572,6 +572,7 @@ async function main() {
       "../OBJ/car3.obj",
       "../OBJ/car4.obj",
       "../OBJ/reindeer.obj",
+      "../OBJ/snowman.obj",
    ];
 
    // Carrega todos os modelos OBJ
@@ -715,6 +716,12 @@ async function main() {
       pauseBtn.blur();
    });
 
+   // PONTUAÇÃO
+   const initialY = -12.0; // Mesma posição inicial do player definida no objeto player
+   let maxDistanceY = initialY; // Guarda a posição mais longe que a rena já chegou
+
+   const scoreElement = document.getElementById("score");
+
    // --- VARIÁVEIS DO AUTO-SCROLL ---
    // A câmera começa na mesma posição Y inicial do jogador (-12 atualmente)
    let cameraY = -12.0;
@@ -739,6 +746,20 @@ async function main() {
       if (!lastTime) lastTime = time;
       const dt = (time - lastTime) / 1000.0; // segundos
       lastTime = time;
+
+      // --- LÓGICA DE PONTUAÇÃO ---
+
+      // 1. Verifica se a posição atual é maior que a máxima alcançada
+      if (player.y > maxDistanceY) {
+         maxDistanceY = player.y;
+
+         // 2. Calcula os pontos: Distância Percorrida / Tamanho do Passo
+         // Math.floor remove decimais minúsculos de erro de flutuação
+         const currentScore = Math.floor((maxDistanceY - initialY) / step);
+
+         // 3. Atualiza o HTML
+         scoreElement.textContent = currentScore;
+      }
 
       //proporções do mundo
       const worldWidth = 6.0;
