@@ -236,7 +236,7 @@ function normalizeModel(objData) {
 }
 
 async function main() {
-   const canvas = document.getElementById("glCanvasCarro");
+   const canvas = document.getElementById("glCanvasPersonagem");
    const gl = canvas.getContext("webgl");
 
    if (!gl) {
@@ -319,8 +319,14 @@ async function main() {
 
    let xw_min = -3.0;
    let xw_max = 3.0;
-   let yw_min = -3.0;
-   let yw_max = 3.0;
+
+   const aspect = gl.canvas.width / gl.canvas.height;
+   const worldWidth = xw_max - xw_min;
+   const worldHeight = worldWidth / aspect;
+
+   let yw_min = -worldHeight / 2;
+   let yw_max = worldHeight / 2;
+
    let z_near = -10.0;
    let z_far = -100.0;
 
@@ -411,7 +417,7 @@ async function main() {
          speed: 4,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: 1,
          modelIndex: 0,
       },
@@ -422,7 +428,7 @@ async function main() {
          speed: 4,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: 1,
          modelIndex: 0,
       },
@@ -432,10 +438,10 @@ async function main() {
          x: 0,
          y: 0,
          z: 15,
-         speed: -5,
+         speed: 5,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: -1,
          modelIndex: 1,
       },
@@ -443,10 +449,10 @@ async function main() {
          x: 0,
          y: 0,
          z: 5,
-         speed: -5,
+         speed: 5,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: -1,
          modelIndex: 1,
       },
@@ -459,7 +465,7 @@ async function main() {
          speed: 3.5,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: 1,
          modelIndex: 2,
       },
@@ -470,7 +476,7 @@ async function main() {
          speed: 3.5,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: 1,
          modelIndex: 2,
       },
@@ -479,10 +485,10 @@ async function main() {
          x: 0,
          y: 8,
          z: 10,
-         speed: -10,
+         speed: 10,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: -1,
          modelIndex: 3,
       },
@@ -493,7 +499,7 @@ async function main() {
          speed: 3.5,
          minZ: -15,
          maxZ: 15,
-         scale: 0.3,
+         scale: 0.6,
          direction: 1,
          modelIndex: 3,
       },
@@ -503,7 +509,7 @@ async function main() {
       x: 0,
       y: -12, // Posição inicial (abaixo da última rua)
       z: 0,
-      scale: 0.35, // Escala (ajuste se a rena ficar muito grande ou pequena)
+      scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
       rotationY: 0, // Rotação atual
       modelIndex: 4, // Índice no array objFiles (reindeer.obj)
    };
@@ -644,13 +650,13 @@ async function main() {
 
       modelViewMatrix = m4.identity();
 
-      modelViewMatrix = m4.translate(modelViewMatrix, obj.x, obj.y, obj.z);
-
-      // --- Correção do pivot da Rena ---
-      if (obj === player) {
-         // valores padrão a ajustar
-         modelViewMatrix = m4.translate(modelViewMatrix, 0, -0.5, 0);
-      }
+      // Escala
+      modelViewMatrix = m4.scale(
+         modelViewMatrix,
+         obj.scale,
+         obj.scale,
+         obj.scale
+      );
 
       // --- Lógica de Rotação Atualizada ---
       let rotationAngle = 0;
@@ -664,20 +670,14 @@ async function main() {
       modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(rotationAngle));
       // ------------------------------------
 
+      modelViewMatrix = m4.translate(modelViewMatrix, obj.z, obj.y, obj.x);
+
       // Aplica rotações globais da câmera/cena
       // modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(theta_x));
       // modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(theta_y));
       // modelViewMatrix = m4.zRotate(modelViewMatrix, degToRad(theta_z));
 
       // Aplica a translação do carro (Y = pista, Z = movimento horizontal)
-
-      // Escala
-      modelViewMatrix = m4.scale(
-         modelViewMatrix,
-         obj.scale,
-         obj.scale,
-         obj.scale
-      );
 
       inverseTransposeModelViewMatrix = m4.transpose(
          m4.inverse(modelViewMatrix)
