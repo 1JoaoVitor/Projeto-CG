@@ -1,0 +1,4 @@
+newmtl colormap
+Kd 1 1 1
+map_Kd Textures/car_colormap.png
+
