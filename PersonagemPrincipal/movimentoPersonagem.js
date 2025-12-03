@@ -562,7 +562,7 @@ async function main() {
    }
 
    // Carregar textura (se tiver)
-   const texture = loadTexture(gl, "../colormap.png");
+   const texture = loadTexture(gl, "../OBJ/Textures/holiday_colormap.png");
    let useTexture = true; // Ativa textura para todos os modelos
 
    // Lista de arquivos OBJ para carregar
