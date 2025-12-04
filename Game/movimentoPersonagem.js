@@ -516,6 +516,104 @@ async function main() {
       modelIndex: 5, // Índice no array objFiles (reindeer.obj)
    };
 
+   // --- VARIÁVEIS DO MAPA ---
+   const terrainRows = []; // Lista que guarda as linhas ativas (rua ou grama)
+   const ROW_DEPTH = 1.0;  // Profundidade de cada linha (igual ao 'step' do player)
+   const TERRAIN_WIDTH = 13; // Quantos blocos de largura (ímpar para centralizar em 0)
+   const DRAW_DISTANCE = 40; // Quantas linhas desenhar à frente/atrás
+   
+   // Índices dos modelos no array 'models' (ajuste se a ordem mudar)
+   const MODEL_GRASS = 6;
+   const MODEL_ROAD = 7;
+
+
+
+   // Função que cria uma nova linha lógica
+   function createRow(yPosition) {
+      // Lógica simples: aleatório, mas garantindo que o início (onde o player nasce) seja seguro
+      let type = 'grass';
+      
+      // Se estiver longe do início, chance de ser rua
+      // (Ajuste a lógica aqui para criar padrões mais complexos)
+      if (yPosition > -5 && Math.random() < 0.4) {
+         type = 'road';
+      }
+
+      // IMPORTANTE: Para manter compatibilidade com seus carros atuais hardcoded,
+      // você pode forçar ruas em posições específicas se quiser, por exemplo:
+      // if ([4, 0, -4, 8, -8].includes(Math.floor(yPosition))) type = 'road';
+
+      return {
+         y: yPosition,
+         type: type,
+         modelIndex: type === 'grass' ? MODEL_GRASS : MODEL_ROAD
+      };
+   }
+
+   // Função para inicializar o mapa ao redor do jogador
+   function initTerrain(startY) {
+      for (let i = -10; i < DRAW_DISTANCE; i++) {
+         const y = startY + (i * ROW_DEPTH);
+         terrainRows.push(createRow(y));
+      }
+   }
+
+   // Função chamada a cada frame para criar chão novo e remover o velho
+   function updateTerrain(currentCameraY) {
+      // 1. Remover linhas que ficaram muito para trás
+      // Limite inferior (atrás da câmera)
+      const removeThreshold = currentCameraY - 10.0; 
+      
+      while (terrainRows.length > 0 && terrainRows[0].y < removeThreshold) {
+         terrainRows.shift(); // Remove a primeira linha (mais antiga)
+      }
+
+      // 2. Adicionar linhas novas à frente
+      // Pega a posição Y da última linha gerada
+      let lastY = terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].y : 0;
+      
+      // Limite superior (à frente da câmera)
+      const addThreshold = currentCameraY + DRAW_DISTANCE;
+
+      while (lastY < addThreshold) {
+         lastY += ROW_DEPTH;
+         terrainRows.push(createRow(lastY));
+      }
+   }
+
+   // Função de renderização específica para o terreno
+function drawTerrain() {
+      for (const row of terrainRows) {
+         const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+         for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
+            
+            // Define cores para debug visual (Grama Verde, Rua Cinza)
+            const isGrass = (row.modelIndex === MODEL_GRASS);
+            const tileColor = isGrass ? [0.1, 0.8, 0.1] : [0.3, 0.3, 0.3];
+
+            const tileObj = {
+               x: 0, 
+               y: row.y, 
+               z: zOffset * 1.0, 
+               // Tente diminuir drasticamente a escala primeiro para testar
+               // Se ficar muito pequeno (buracos), aumente devagar.
+               scale: 0.99, // Um pouco menor que 1.0 para ver se há separação
+               
+               modelIndex: row.modelIndex,
+               rotationY: 0,
+               
+               // --- NOVAS PROPRIEDADES ---
+               color: tileColor,       // Usa cor sólida
+               useTexture: false       // Desativa a textura (evita o marrom bagunçado)
+            };
+            
+            drawObj(tileObj);
+         }
+      }
+   }
+
+
+
    let lastTime = null;
 
    // Função para carregar textura
@@ -573,6 +671,8 @@ async function main() {
       "../OBJ/car4.obj",
       "../OBJ/reindeer.obj",
       "../OBJ/snowman.obj",
+      "../OBJ/grass.obj",
+      "../OBJ/road.obj",
    ];
 
    // Carrega todos os modelos OBJ
@@ -621,12 +721,11 @@ async function main() {
       return;
    }
 
-   function drawObj(obj) {
-      // Obt\u00e9m o modelo correto para este carro
-      const modelIndex = obj.modelIndex % models.length; // Garante que n\u00e3o ultrapasse o array
+function drawObj(obj) {
+      const modelIndex = obj.modelIndex % models.length;
       const model = models[modelIndex];
 
-      // Carrega os buffers do modelo espec\u00edfico
+      // --- Buffers (mantém igual) ---
       gl.bindBuffer(gl.ARRAY_BUFFER, VertexBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, model.vertices, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(positionLocation);
@@ -645,62 +744,50 @@ async function main() {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexBuffer);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, model.indices, gl.STATIC_DRAW);
 
-      // Configurar textura
+      // --- CORREÇÃO 1: Cores e Texturas Dinâmicas ---
+      
+      // Se o objeto tiver 'obj.color', usa ela. Senão, usa branco padrão.
+      let objColor = obj.color || [1.0, 1.0, 1.0]; 
+      gl.uniform3fv(colorUniformLocation, new Float32Array(objColor));
+
+      // Se o objeto definir explicitamente 'useTexture', respeitamos. 
+      // Caso contrário, usamos o global 'useTexture'.
+      let shouldUseTexture = (obj.useTexture !== undefined) ? obj.useTexture : useTexture;
+      
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.uniform1i(textureUniformLocation, 0);
-      gl.uniform1i(useTextureUniformLocation, useTexture ? 1 : 0);
+      gl.uniform1i(useTextureUniformLocation, shouldUseTexture ? 1 : 0);
 
+      // --- Matrizes ---
       modelViewMatrix = m4.identity();
 
-      // Escala
-      modelViewMatrix = m4.scale(
-         modelViewMatrix,
-         obj.scale,
-         obj.scale,
-         obj.scale
-      );
+      // --- CORREÇÃO 2: Escala ---
+      // Se o scale for muito grande, o chão cobre tudo. Ajuste aqui se necessário.
+      modelViewMatrix = m4.scale(modelViewMatrix, obj.scale, obj.scale, obj.scale);
 
-      // --- Lógica de Rotação Atualizada ---
+      // --- Rotação ---
       let rotationAngle = 0;
       if (obj.rotationY !== undefined) {
-         // Se for o jogador (tem propriedade rotationY), usa ela
          rotationAngle = obj.rotationY;
       } else {
-         // Se for carro (tem direction), calcula 90 ou 270
          rotationAngle = obj.direction === 1 ? 90 : 270;
       }
       modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(rotationAngle));
-      // ------------------------------------
+      
+      // --- CORREÇÃO 3: Rotação Extra (Opcional) ---
+      // Alguns modelos de chão vêm "em pé" ou invertidos. 
+      if (obj.rotationX) {
+          modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(obj.rotationX));
+      }
 
       modelViewMatrix = m4.translate(modelViewMatrix, obj.z, obj.y, obj.x);
 
-      // Aplica rotações globais da câmera/cena
-      // modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(theta_x));
-      // modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(theta_y));
-      // modelViewMatrix = m4.zRotate(modelViewMatrix, degToRad(theta_z));
+      inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
 
-      // Aplica a translação do carro (Y = pista, Z = movimento horizontal)
-
-      inverseTransposeModelViewMatrix = m4.transpose(
-         m4.inverse(modelViewMatrix)
-      );
-
-      gl.uniformMatrix4fv(
-         modelViewMatrixUniformLocation,
-         false,
-         modelViewMatrix
-      );
-      gl.uniformMatrix4fv(
-         inverseTransposeModelViewMatrixUniformLocation,
-         false,
-         inverseTransposeModelViewMatrix
-      );
-      gl.uniformMatrix4fv(
-         projectionMatrixUniformLocation,
-         false,
-         projectionMatrix
-      );
+      gl.uniformMatrix4fv(modelViewMatrixUniformLocation, false, modelViewMatrix);
+      gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation, false, inverseTransposeModelViewMatrix);
+      gl.uniformMatrix4fv(projectionMatrixUniformLocation, false, projectionMatrix);
 
       gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
    }
@@ -830,6 +917,8 @@ async function main() {
          }
       });
 
+      updateTerrain(cameraY);
+
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
       if (rotateX) theta_x += 1;
@@ -837,6 +926,8 @@ async function main() {
       if (rotateZ) theta_z += 1;
 
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      drawTerrain();
 
       // Desenha todos os carros
       cars.forEach((car) => {
@@ -849,6 +940,9 @@ async function main() {
 
       requestAnimationFrame(drawScene);
    }
+   
+   // Inicializa o terreno ao redor da posição inicial do player (-12)
+   initTerrain(-12);
 
    // Inicia a animação (requestAnimationFrame passa o timestamp)
    requestAnimationFrame(drawScene);
