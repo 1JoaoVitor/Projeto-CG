@@ -449,7 +449,7 @@ async function main() {
    // --- VARIÁVEIS DO MAPA ---
    const terrainRows = []; // Lista que guarda as linhas ativas (rua ou grama)
    const ROW_DEPTH = 1.0;  // Profundidade de cada linha (igual ao 'step' do player)
-   const TERRAIN_WIDTH = 13; // Quantos blocos de largura (ímpar para centralizar em 0)
+   const TERRAIN_WIDTH = 21; // Quantos blocos de largura (ímpar para centralizar em 0)
    const DRAW_DISTANCE = 40; // Quantas linhas desenhar à frente/atrás
    
    // Índices dos modelos no array 'models' (ajuste se a ordem mudar)
@@ -512,37 +512,89 @@ async function main() {
    }
 
    // Função de renderização específica para o terreno
-function drawTerrain() {
-      for (const row of terrainRows) {
-         const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
-         for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
-            
-            // Define cores para debug visual (Grama Verde, Rua Cinza)
-            const isGrass = (row.modelIndex === MODEL_GRASS);
-            const tileColor = isGrass ? [0.1, 0.8, 0.1] : [0.3, 0.3, 0.3];
 
-            const tileObj = {
-               x: row.x, 
-               y: 0, 
-               z: zOffset * 1.0, 
-               // Tente diminuir drasticamente a escala primeiro para testar
-               // Se ficar muito pequeno (buracos), aumente devagar.
-               scale: 0.99, // Um pouco menor que 1.0 para ver se há separação
-               
-               modelIndex: row.modelIndex,
-               rotationY: 0,
-               
-               // --- NOVAS PROPRIEDADES ---
-               color: tileColor,       // Usa cor sólida
-               useTexture: false       // Desativa a textura (evita o marrom bagunçado)
+   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE =====
+// ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE (CORRIGIDA) =====
+   function drawTerrain() {
+      const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+      
+      // Agrupar tiles por tipo
+      const grassTiles = [];
+      const roadTiles = [];
+
+      for (const row of terrainRows) {
+         for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
+            // Criamos apenas os dados de posição, sem criar objetos completos desnecessários
+            const transform = {
+               x: row.x,
+               y: -0.01, // Ligeiramente abaixo para não brigar com o Z do player/carros
+               z: zOffset * 1.0,
+               scale: 1.0
             };
-            
-            drawObj(tileObj);
+
+            if (row.modelIndex === MODEL_GRASS) {
+               grassTiles.push(transform);
+            } else {
+               roadTiles.push(transform);
+            }
          }
       }
+
+      // Função auxiliar para desenhar um lote (Batch)
+      // Isso evita chamar drawObj repetidamente e resolve o problema das cores
+      function drawBatch(modelIndex, tiles, color) {
+         if (tiles.length === 0) return;
+
+         const buffers = modelBuffers[modelIndex % models.length];
+
+         // 1. BIND ÚNICO (A Grande Otimização)
+         // Liga a geometria (Vértices, Normais, etc) apenas UMA VEZ para todos os blocos
+         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
+         gl.enableVertexAttribArray(positionLocation);
+         gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normalBuffer);
+         gl.enableVertexAttribArray(normalLocation);
+         gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
+
+         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.texcoordBuffer);
+         gl.enableVertexAttribArray(texcoordLocation);
+         gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
+
+         // 2. CONFIGURAÇÃO DE MATERIAL ÚNICA
+         // Garante que a cor seja a que queremos e DESATIVA a textura para o chão
+         gl.uniform3fv(colorUniformLocation, new Float32Array(color));
+         gl.uniform1i(useTextureUniformLocation, 0); // 0 = False (Usa cor sólida)
+
+         // 3. LOOP DE DESENHO (Apenas Matrizes)
+         for (const tile of tiles) {
+            let modelViewMatrix = m4.identity();
+            
+            // Ordem: Scale -> Rotate -> Translate
+            // Como scale e rotate são fixos para o chão, simplifiquei:
+            // modelViewMatrix = m4.scale(modelViewMatrix, tile.scale, tile.scale, tile.scale);
+            
+            modelViewMatrix = m4.translate(modelViewMatrix, tile.x, tile.y, tile.z);
+
+            let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
+
+            gl.uniformMatrix4fv(modelViewMatrixUniformLocation, false, modelViewMatrix);
+            gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation, false, inverseTransposeModelViewMatrix);
+            gl.uniformMatrix4fv(projectionMatrixUniformLocation, false, projectionMatrix);
+
+            gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_SHORT, 0);
+         }
+      }
+
+      // Agora desenhamos os lotes
+      // Verde para grama
+      drawBatch(MODEL_GRASS, grassTiles, [0.1, 0.8, 0.1]);
+      
+      // Cinza escuro para estrada
+      drawBatch(MODEL_ROAD, roadTiles, [0.3, 0.3, 0.3]);
    }
-
-
 
    let lastTime = null;
 
@@ -651,37 +703,58 @@ function drawTerrain() {
       return;
    }
 
-function drawObj(obj) {
-      const modelIndex = obj.modelIndex % models.length;
-      const model = models[modelIndex];
-
-      // --- Buffers (mantém igual) ---
-      gl.bindBuffer(gl.ARRAY_BUFFER, VertexBuffer);
+   // ===== OTIMIZAÇÃO 1: BUFFERS PERMANENTES =====
+   // Criar buffers WebGL permanentes para cada modelo
+   const modelBuffers = models.map(model => {
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
       gl.bufferData(gl.ARRAY_BUFFER, model.vertices, gl.STATIC_DRAW);
+
+      const nbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, nbo);
+      gl.bufferData(gl.ARRAY_BUFFER, model.normals, gl.STATIC_DRAW);
+
+      const tbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tbo);
+      gl.bufferData(gl.ARRAY_BUFFER, model.texcoords, gl.STATIC_DRAW);
+
+      const ibo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, model.indices, gl.STATIC_DRAW);
+
+      return {
+         vertexBuffer: vbo,
+         normalBuffer: nbo,
+         texcoordBuffer: tbo,
+         indexBuffer: ibo,
+         indexCount: model.indices.length
+      };
+   });
+
+// ===== OTIMIZAÇÃO 2: FUNÇÃO DE DESENHO OTIMIZADA =====
+   function drawObj(obj) {
+      const modelIndex = obj.modelIndex % models.length;
+      const buffers = modelBuffers[modelIndex];
+
+      // Bind dos buffers (muito mais rápido que bufferData)
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, NormalBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, model.normals, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normalBuffer);
       gl.enableVertexAttribArray(normalLocation);
       gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, TexcoordBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, model.texcoords, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.texcoordBuffer);
       gl.enableVertexAttribArray(texcoordLocation);
       gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
 
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexBuffer);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, model.indices, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
 
-      // --- CORREÇÃO 1: Cores e Texturas Dinâmicas ---
-      
-      // Se o objeto tiver 'obj.color', usa ela. Senão, usa branco padrão.
-      let objColor = obj.color || [1.0, 1.0, 1.0]; 
+      // Cores e texturas
+      let objColor = obj.color || [1.0, 1.0, 1.0];
       gl.uniform3fv(colorUniformLocation, new Float32Array(objColor));
 
-      // Se o objeto definir explicitamente 'useTexture', respeitamos. 
-      // Caso contrário, usamos o global 'useTexture'.
       let shouldUseTexture = (obj.useTexture !== undefined) ? obj.useTexture : useTexture;
       
       gl.activeTexture(gl.TEXTURE0);
@@ -689,14 +762,10 @@ function drawObj(obj) {
       gl.uniform1i(textureUniformLocation, 0);
       gl.uniform1i(useTextureUniformLocation, shouldUseTexture ? 1 : 0);
 
-      // --- Matrizes ---
-      modelViewMatrix = m4.identity();
-
-      // --- CORREÇÃO 2: Escala ---
-      // Se o scale for muito grande, o chão cobre tudo. Ajuste aqui se necessário.
+      // Matrizes
+      let modelViewMatrix = m4.identity();
       modelViewMatrix = m4.scale(modelViewMatrix, obj.scale, obj.scale, obj.scale);
 
-      // --- Rotação ---
       let rotationAngle = 0;
       if (obj.rotationY !== undefined) {
          rotationAngle = obj.rotationY;
@@ -705,21 +774,19 @@ function drawObj(obj) {
       }
       modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(rotationAngle));
       
-      // --- CORREÇÃO 3: Rotação Extra (Opcional) ---
-      // Alguns modelos de chão vêm "em pé" ou invertidos. 
       if (obj.rotationX) {
-          modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(obj.rotationX));
+         modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(obj.rotationX));
       }
 
       modelViewMatrix = m4.translate(modelViewMatrix, obj.x, obj.y, obj.z);
 
-      inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
+      let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
 
       gl.uniformMatrix4fv(modelViewMatrixUniformLocation, false, modelViewMatrix);
       gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation, false, inverseTransposeModelViewMatrix);
       gl.uniformMatrix4fv(projectionMatrixUniformLocation, false, projectionMatrix);
 
-      gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+      gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_SHORT, 0);
    }
 
    let isPaused = false;
@@ -857,7 +924,7 @@ function drawObj(obj) {
 
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-      //drawTerrain();
+      drawTerrain();
 
       // Desenha todos os carros
       cars.forEach((car) => {
