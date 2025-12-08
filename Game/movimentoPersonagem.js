@@ -515,21 +515,20 @@ async function main() {
 
    // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE =====
 // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE (CORRIGIDA) =====
+// ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO COM TEXTURA =====
    function drawTerrain() {
       const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
       
-      // Agrupar tiles por tipo
       const grassTiles = [];
       const roadTiles = [];
 
       for (const row of terrainRows) {
          for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
-            // Criamos apenas os dados de posição, sem criar objetos completos desnecessários
             const transform = {
                x: row.x,
-               y: -0.01, // Ligeiramente abaixo para não brigar com o Z do player/carros
+               y: -0.01, 
                z: zOffset * 1.0,
-               scale: 1.0
+               scale: 1.0 // Se precisar ajustar o tamanho do tile, mude aqui
             };
 
             if (row.modelIndex === MODEL_GRASS) {
@@ -540,15 +539,13 @@ async function main() {
          }
       }
 
-      // Função auxiliar para desenhar um lote (Batch)
-      // Isso evita chamar drawObj repetidamente e resolve o problema das cores
-      function drawBatch(modelIndex, tiles, color) {
+      // Função auxiliar para desenhar um lote (Batch) com Textura
+      function drawBatch(modelIndex, tiles) {
          if (tiles.length === 0) return;
 
          const buffers = modelBuffers[modelIndex % models.length];
 
-         // 1. BIND ÚNICO (A Grande Otimização)
-         // Liga a geometria (Vértices, Normais, etc) apenas UMA VEZ para todos os blocos
+         // 1. Liga geometria
          gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
          gl.enableVertexAttribArray(positionLocation);
          gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
@@ -563,19 +560,22 @@ async function main() {
 
          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
 
-         // 2. CONFIGURAÇÃO DE MATERIAL ÚNICA
-         // Garante que a cor seja a que queremos e DESATIVA a textura para o chão
-         gl.uniform3fv(colorUniformLocation, new Float32Array(color));
-         gl.uniform1i(useTextureUniformLocation, 0); // 0 = False (Usa cor sólida)
+         // 2. CONFIGURAÇÃO DE TEXTURA (A Mudança Principal)
+         // Define a cor como BRANCO para não alterar as cores originais da imagem
+         gl.uniform3fv(colorUniformLocation, new Float32Array([1.0, 1.0, 1.0]));
+         
+         // Ativa a textura
+         gl.activeTexture(gl.TEXTURE0);
+         gl.bindTexture(gl.TEXTURE_2D, texture); // Usa a textura global carregada
+         gl.uniform1i(textureUniformLocation, 0);
+         
+         // Diz ao shader: "Sim, use a textura!"
+         gl.uniform1i(useTextureUniformLocation, 1); 
 
-         // 3. LOOP DE DESENHO (Apenas Matrizes)
+         // 3. Loop de Desenho
          for (const tile of tiles) {
             let modelViewMatrix = m4.identity();
-            
-            // Ordem: Scale -> Rotate -> Translate
-            // Como scale e rotate são fixos para o chão, simplifiquei:
             // modelViewMatrix = m4.scale(modelViewMatrix, tile.scale, tile.scale, tile.scale);
-            
             modelViewMatrix = m4.translate(modelViewMatrix, tile.x, tile.y, tile.z);
 
             let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
@@ -588,12 +588,9 @@ async function main() {
          }
       }
 
-      // Agora desenhamos os lotes
-      // Verde para grama
-      drawBatch(MODEL_GRASS, grassTiles, [0.1, 0.8, 0.1]);
-      
-      // Cinza escuro para estrada
-      drawBatch(MODEL_ROAD, roadTiles, [0.3, 0.3, 0.3]);
+      // Agora chamamos o batch sem precisar passar cores manuais
+      drawBatch(MODEL_GRASS, grassTiles);
+      drawBatch(MODEL_ROAD, roadTiles);
    }
 
    let lastTime = null;

@@ -2,28 +2,22 @@ mtllib grass.mtl
 
 g grass
 
+# Vértices
 v 0 0 0 
 v 0 0 1 
 v -1 0 0 
 v -1 0 1 
 
+# Normais
 vn 0 1 0 
 
-vt 0 0 
-vt 0 39.37008 
-vt 39.37008 0 
-vt 39.37008 39.37008 
+# Coordenadas UV (Apontando para o verde no holiday_colormap.png)
+vt 0.65 0.35
+vt 0.65 0.35
+vt 0.65 0.35
+vt 0.65 0.35
 
 usemtl grass
 
-f 2/2/1 1/1/1 3/3/1 
-f 3/3/1 4/4/1 2/2/1 
-g grass
-
-
-
-
-usemtl grass
-
-f 2/2/1 1/1/1 3/3/1 
-f 3/3/1 4/4/1 2/2/1 
+f 2/1/1 1/1/1 3/1/1 
+f 3/1/1 4/1/1 2/1/1
