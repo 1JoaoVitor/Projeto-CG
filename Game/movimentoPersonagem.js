@@ -302,8 +302,17 @@ async function main() {
    let modelViewMatrix = [];
    let inverseTransposeModelViewMatrix = [];
 
-   let P0 = [0.0, 30.0, 30.0];
-   let Pref = [0.0, 0.0, 0.0];
+   // CONFIGURAÇÃO INICIAL DA CÂMERA
+   // P0: Posição do olho (Câmera)
+   // Pref: Ponto de referência (Para onde olha)
+   // V: Vetor "Up" (Cabeça para cima)
+
+   // Agora Y é CIMA. X é FRENTE.
+   // Começamos olhando para o início (X=0, Z=0).
+   // Câmera posicionada atrás (-X) e acima (+Y).
+
+   let P0 = [-20.0, 30.0, 0.0];
+   let Pref = [10.0, 0.0, 0.0];
    let V = [0.0, 1.0, 0.0];
    let viewingMatrix = m4.setViewingMatrix(P0, Pref, V);
 
@@ -311,14 +320,14 @@ async function main() {
    gl.uniform3fv(viewPositionUniformLocation, new Float32Array(P0));
    gl.uniform3fv(
       lightPositionUniformLocation,
-      new Float32Array([40.0, 40.0, 40.0])
+      new Float32Array([10.0, 50.0, 20.0])
    );
 
    let color = [1.0, 0.0, 0.0];
    gl.uniform3fv(colorUniformLocation, new Float32Array(color));
 
-   let xw_min = -3.0;
-   let xw_max = 3.0;
+   let xw_min = -6.0;
+   let xw_max = 6.0;
 
    const aspect = gl.canvas.width / gl.canvas.height;
    const worldWidth = xw_max - xw_min;
@@ -327,8 +336,8 @@ async function main() {
    let yw_min = -worldHeight / 2;
    let yw_max = worldHeight / 2;
 
-   let z_near = -10.0;
-   let z_far = -100.0;
+   let z_near = 0.0;
+   let z_far = -50.0;
 
    let projectionMatrix = m4.setOrthographicProjectionMatrix(
       xw_min,
@@ -387,20 +396,20 @@ async function main() {
 
          // --- Controles da Rena (Novos) ---
          case "w":
-            player.y += step; // Sobe a "pista" (Vai para o fundo)
-            player.rotationY = 180; // Costas para a câmera
+            player.x += step; // Sobe a "pista" (Vai para o fundo)
+            player.rotationY = 90; // Costas para a câmera
             break;
          case "s":
-            player.y -= step; // Desce a "pista" (Vem para perto)
-            player.rotationY = 0; // Frente para a câmera
+            player.x -= step; // Desce a "pista" (Vem para perto)
+            player.rotationY = 270; // Frente para a câmera
             break;
          case "a":
             player.z -= step; // Vai para a esquerda
-            player.rotationY = 270; // Vira para esquerda
+            player.rotationY = 180; // Vira para esquerda
             break;
          case "d":
             player.z += step; // Vai para a direita
-            player.rotationY = 90; // Vira para direita
+            player.rotationY = 0; // Vira para direita
             break;
       }
    }
@@ -411,108 +420,29 @@ async function main() {
 
    // Array de carros em diferentes pistas/ruas (tipo Crossy Road)
    const cars = [
-      // Rua 1 (y = 4) - carros indo para direita
-      {
-         x: 0,
-         y: 4,
-         z: -15,
-         speed: 4,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: 1,
-         modelIndex: 0,
-      },
-      {
-         x: 0,
-         y: 4,
-         z: -5,
-         speed: 4,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: 1,
-         modelIndex: 0,
-      },
+      // Rua 1 (x = 4)
+      { x: 4, y: 0, z: -15, speed: 4, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 0 },
+      { x: 4, y: 0, z: -5,  speed: 4, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 0 },
 
-      // Rua 2 (y = 0) - carros indo para esquerda
-      {
-         x: 0,
-         y: 0,
-         z: 15,
-         speed: 5,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: -1,
-         modelIndex: 1,
-      },
-      {
-         x: 0,
-         y: 0,
-         z: 5,
-         speed: 5,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: -1,
-         modelIndex: 1,
-      },
+      // Rua 2 (x = 0)
+      { x: 0, y: 0, z: 15, speed: 5, minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 1 },
+      { x: 0, y: 0, z: 5,  speed: 5, minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 1 },
 
-      // Rua 3 (y = -4) - carros indo para direita
-      {
-         x: 0,
-         y: -4,
-         z: -10,
-         speed: 3.5,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: 1,
-         modelIndex: 2,
-      },
-      {
-         x: 0,
-         y: -4,
-         z: 0,
-         speed: 3.5,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: 1,
-         modelIndex: 2,
-      },
-
-      {
-         x: 0,
-         y: 8,
-         z: 10,
-         speed: 10,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: -1,
-         modelIndex: 3,
-      },
-      {
-         x: 0,
-         y: -8,
-         z: 0,
-         speed: 3.5,
-         minZ: -15,
-         maxZ: 15,
-         scale: 0.6,
-         direction: 1,
-         modelIndex: 3,
-      },
+      // Rua 3 (x = -4)
+      { x: -4, y: 0, z: -10, speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 2 },
+      { x: -4, y: 0, z: 0,   speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 2 },
+      
+      // Outras ruas
+      { x: 8,  y: 0, z: 10, speed: 10,  minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 3 },
+      { x: -8, y: 0, z: 0,  speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1,  modelIndex: 3 },
    ];
 
    let player = {
-      x: 0,
-      y: -12, // Posição inicial (abaixo da última rua)
+      x: -12,
+      y: 0,
       z: 0,
       scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
-      rotationY: 0, // Rotação atual
+      rotationY: 90, // Rotação atual
       modelIndex: 5, // Índice no array objFiles (reindeer.obj)
    };
 
@@ -529,55 +459,55 @@ async function main() {
 
 
    // Função que cria uma nova linha lógica
-   function createRow(yPosition) {
+   function createRow(xPosition) {
       // Lógica simples: aleatório, mas garantindo que o início (onde o player nasce) seja seguro
       let type = 'grass';
       
       // Se estiver longe do início, chance de ser rua
       // (Ajuste a lógica aqui para criar padrões mais complexos)
-      if (yPosition > -5 && Math.random() < 0.4) {
+      if (xPosition > -5 && Math.random() < 0.4) {
          type = 'road';
       }
 
-      // IMPORTANTE: Para manter compatibilidade com seus carros atuais hardcoded,
+      // IMPORTANTE: Para manter compSatibilidade com seus carros atuais hardcoded,
       // você pode forçar ruas em posições específicas se quiser, por exemplo:
-      // if ([4, 0, -4, 8, -8].includes(Math.floor(yPosition))) type = 'road';
+      if ([4, 0, -4, 8, -8].includes(Math.floor(xPosition))) type = 'road';
 
       return {
-         y: yPosition,
+         x: xPosition,
          type: type,
          modelIndex: type === 'grass' ? MODEL_GRASS : MODEL_ROAD
       };
    }
 
    // Função para inicializar o mapa ao redor do jogador
-   function initTerrain(startY) {
+   function initTerrain(startX) {
       for (let i = -10; i < DRAW_DISTANCE; i++) {
-         const y = startY + (i * ROW_DEPTH);
-         terrainRows.push(createRow(y));
+         const x = startX + (i * ROW_DEPTH);
+         terrainRows.push(createRow(x));
       }
    }
 
    // Função chamada a cada frame para criar chão novo e remover o velho
-   function updateTerrain(currentCameraY) {
+   function updateTerrain(currentCameraX) {
       // 1. Remover linhas que ficaram muito para trás
       // Limite inferior (atrás da câmera)
-      const removeThreshold = currentCameraY - 10.0; 
+      const removeThreshold = currentCameraX - 15.0; 
       
-      while (terrainRows.length > 0 && terrainRows[0].y < removeThreshold) {
+      while (terrainRows.length > 0 && terrainRows[0].x < removeThreshold) {
          terrainRows.shift(); // Remove a primeira linha (mais antiga)
       }
 
       // 2. Adicionar linhas novas à frente
       // Pega a posição Y da última linha gerada
-      let lastY = terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].y : 0;
+      let lastX = terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].x : 0;
       
       // Limite superior (à frente da câmera)
-      const addThreshold = currentCameraY + DRAW_DISTANCE;
+      const addThreshold = currentCameraX + DRAW_DISTANCE;
 
-      while (lastY < addThreshold) {
-         lastY += ROW_DEPTH;
-         terrainRows.push(createRow(lastY));
+      while (lastX < addThreshold) {
+         lastX += ROW_DEPTH;
+         terrainRows.push(createRow(lastX));
       }
    }
 
@@ -592,8 +522,8 @@ function drawTerrain() {
             const tileColor = isGrass ? [0.1, 0.8, 0.1] : [0.3, 0.3, 0.3];
 
             const tileObj = {
-               x: 0, 
-               y: row.y, 
+               x: row.x, 
+               y: 0, 
                z: zOffset * 1.0, 
                // Tente diminuir drasticamente a escala primeiro para testar
                // Se ficar muito pequeno (buracos), aumente devagar.
@@ -771,7 +701,7 @@ function drawObj(obj) {
       if (obj.rotationY !== undefined) {
          rotationAngle = obj.rotationY;
       } else {
-         rotationAngle = obj.direction === 1 ? 90 : 270;
+         rotationAngle = obj.direction === 1 ? 0 : 180;
       }
       modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(rotationAngle));
       
@@ -781,7 +711,7 @@ function drawObj(obj) {
           modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(obj.rotationX));
       }
 
-      modelViewMatrix = m4.translate(modelViewMatrix, obj.z, obj.y, obj.x);
+      modelViewMatrix = m4.translate(modelViewMatrix, obj.x, obj.y, obj.z);
 
       inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
 
@@ -804,14 +734,14 @@ function drawObj(obj) {
    });
 
    // PONTUAÇÃO
-   const initialY = -12.0; // Mesma posição inicial do player definida no objeto player
-   let maxDistanceY = initialY; // Guarda a posição mais longe que a rena já chegou
+   const initialX = -12.0; // Mesma posição inicial do player definida no objeto player
+   let maxDistanceX = initialX; // Guarda a posição mais longe que a rena já chegou
 
    const scoreElement = document.getElementById("score");
 
    // --- VARIÁVEIS DO AUTO-SCROLL ---
    // A câmera começa na mesma posição Y inicial do jogador (-12 atualmente)
-   let cameraY = -12.0;
+   let cameraX = -12.0;
 
    // Velocidade da câmera (unidades por segundo)
    // Ajuste este valor: 1.0 é lento, 3.0 é rápido/difícil
@@ -837,12 +767,12 @@ function drawObj(obj) {
       // --- LÓGICA DE PONTUAÇÃO ---
 
       // 1. Verifica se a posição atual é maior que a máxima alcançada
-      if (player.y > maxDistanceY) {
-         maxDistanceY = player.y;
+      if (player.x > maxDistanceX) {
+         maxDistanceX = player.x;
 
          // 2. Calcula os pontos: Distância Percorrida / Tamanho do Passo
          // Math.floor remove decimais minúsculos de erro de flutuação
-         const currentScore = Math.floor((maxDistanceY - initialY) / step);
+         const currentScore = Math.floor((maxDistanceX - initialX) / step);
 
          // 3. Atualiza o HTML
          scoreElement.textContent = currentScore;
@@ -853,7 +783,7 @@ function drawObj(obj) {
       const aspect = gl.canvas.width / gl.canvas.height;
       const worldHeight = worldWidth / aspect;
 
-      cameraY += scrollSpeed * dt;
+      cameraX += scrollSpeed * dt;
 
       //Verifica o limite de 1/3 da tela
       // O centro da tela (TargetY) é "cameraY + lookAhead".
@@ -861,21 +791,21 @@ function drawObj(obj) {
       // A linha de 1/3 é "Base + worldHeight/3".
       // Simplificando a matemática: Se o jogador passar dessa linha, ajustamos o cameraY.
 
-      const lookAhead = 2.0;
+      const lookAhead = 10.0;
 
       // Essa fórmula garante que o jogador fique na linha de 1/3 visualmente
       // CenterY = PlayerY + H/6 (H/6 é a diferença entre o meio e o 1/3 inferior)
       // Como CenterY = cameraY + lookAhead, isolamos o cameraY:
-      const minCameraYForPlayer = player.y + worldHeight / 6.0 - lookAhead;
+      const minCameraYForPlayer = player.x + worldHeight / 6.0 - lookAhead;
 
       // Se o scroll automático estiver atrasado em relação ao jogador, puxa a câmera
-      if (cameraY < minCameraYForPlayer) {
-         cameraY = minCameraYForPlayer;
+      if (cameraX < minCameraYForPlayer) {
+         cameraX = minCameraYForPlayer;
       }
 
-      let targetX = 0.0; //player.z;
-      let targetY = cameraY + lookAhead;
-      let targetZ = player.x;
+      let targetX = cameraX + lookAhead;
+      let targetY = 0.0; 
+      let targetZ = player.z;
 
       let Pref = [targetX, targetY, targetZ];
 
@@ -883,9 +813,9 @@ function drawObj(obj) {
       // Mantemos o deslocamento original (offset) de [0, 30, 30] em relação ao alvo
       // Isso preserva o ângulo de 45 graus e a distância
       let P0 = [
-         targetX + 0.0, // Segue lateralmente
-         targetY + 30.0, // Mantém altura/distância Y
-         targetZ + 30.0, // Mantém profundidade Z
+         targetX - 10, // Segue lateralmente
+         targetY + 15.0, // Mantém altura/distância Y
+         targetZ + 1.0, 
       ];
 
       // 3. Recalcula a matriz
@@ -899,7 +829,7 @@ function drawObj(obj) {
       gl.uniform3fv(viewPositionUniformLocation, new Float32Array(P0));
 
       // (Opcional) Faz a luz acompanhar o jogador para o mundo não ficar escuro lá na frente
-      let lightPos = [targetX + 40.0, targetY + 40.0, targetZ + 40.0];
+      let lightPos = [targetX + 10.0, 50.0, 20.0];
       gl.uniform3fv(lightPositionUniformLocation, new Float32Array(lightPos));
 
       // ----------------------------------
@@ -917,7 +847,7 @@ function drawObj(obj) {
          }
       });
 
-      updateTerrain(cameraY);
+      updateTerrain(cameraX);
 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -927,7 +857,7 @@ function drawObj(obj) {
 
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-      drawTerrain();
+      //drawTerrain();
 
       // Desenha todos os carros
       cars.forEach((car) => {
