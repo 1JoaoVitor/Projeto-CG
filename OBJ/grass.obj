@@ -2,16 +2,14 @@ mtllib grass.mtl
 
 g grass
 
-# Vértices
 v 0 0 0 
 v 0 0 1 
 v -1 0 0 
 v -1 0 1 
 
-# Normais
+
 vn 0 1 0 
 
-# Coordenadas UV (Apontando para o verde no holiday_colormap.png)
 vt 0.65 0.35
 vt 0.65 0.35
 vt 0.65 0.35

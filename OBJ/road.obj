@@ -2,7 +2,6 @@ mtllib road.mtl
 
 g roadStraight
 
-# --- Vértices (Mantidos originais) ---
 v -0.9183474 0 0 
 v -0.9183474 0 1 
 v -1 0 0 
@@ -24,12 +23,10 @@ v -0.1548649 0.02 1
 v -0.1548649 0.01 0 
 v -0.1548649 0.01 1 
 
-# --- Normais ---
 vn 0 1 0 
 vn 1 0 0 
 vn -1 0 0 
 
-# --- Coordenadas de Textura (UVs) CORRIGIDAS ---
 # vt 1: Verde (Grama)
 vt 0.65 0.35
 # vt 2: Cinza Claro/Branco (Meio-fio)
@@ -37,10 +34,9 @@ vt 0.10 0.50
 # vt 3: Cinza Escuro (Asfalto)
 vt 0.65 0.10
 
-# --- Faces mapeadas para os UVs corretos ---
 
 usemtl grass
-# Usa vt 1 (Verde)
+
 f 2/1/1 1/1/1 3/1/1 
 f 3/1/1 4/1/1 2/1/1 
 f 6/1/1 5/1/1 7/1/1 
@@ -62,6 +58,6 @@ f 17/2/3 19/2/3 20/2/3
 f 20/2/3 18/2/3 17/2/3 
 
 usemtl road
-# Usa vt 3 (Cinza Escuro)
+
 f 20/3/1 19/3/1 13/3/1 
 f 13/3/1 14/3/1 20/3/1
