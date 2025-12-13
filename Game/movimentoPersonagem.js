@@ -396,21 +396,36 @@ async function main() {
 
          // --- Controles da Rena (Novos) ---
          case "w":
-            player.x += step; // Sobe a "pista" (Vai para o fundo)
-            player.rotationY = 90; // Costas para a câmera
-            break;
-         case "s":
-            player.x -= step; // Desce a "pista" (Vem para perto)
-            player.rotationY = 270; // Frente para a câmera
-            break;
-         case "a":
-            player.z -= step; // Vai para a esquerda
-            player.rotationY = 180; // Vira para esquerda
-            break;
-         case "d":
-            player.z += step; // Vai para a direita
-            player.rotationY = 0; // Vira para direita
-            break;
+         const newXForward = player.x + step;
+         if (!checkCollisionWithTrees(newXForward, player.z)) {
+            player.x = newXForward;
+         }
+         player.rotationY = 90;
+         break;
+         
+      case "s":
+         const newXBackward = player.x - step;
+         if (!checkCollisionWithTrees(newXBackward, player.z)) {
+            player.x = newXBackward;
+         }
+         player.rotationY = 270;
+         break;
+         
+      case "a":
+         const newZLeft = player.z - step;
+         if (!checkCollisionWithTrees(player.x, newZLeft)) {
+            player.z = newZLeft;
+         }
+         player.rotationY = 180;
+         break;
+         
+      case "d":
+         const newZRight = player.z + step;
+         if (!checkCollisionWithTrees(player.x, newZRight)) {
+            player.z = newZRight;
+         }
+         player.rotationY = 0;
+         break;
       }
    }
 
@@ -419,26 +434,12 @@ async function main() {
    let theta_z = 0.0;
 
    // Array de carros em diferentes pistas/ruas (tipo Crossy Road)
-   const cars = [
-      // Rua 1 (x = 4)
-      { x: 4, y: 0, z: -15, speed: 4, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 0 },
-      { x: 4, y: 0, z: -5,  speed: 4, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 0 },
+   let cars = [];
 
-      // Rua 2 (x = 0)
-      { x: 0, y: 0, z: 15, speed: 5, minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 1 },
-      { x: 0, y: 0, z: 5,  speed: 5, minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 1 },
-
-      // Rua 3 (x = -4)
-      { x: -4, y: 0, z: -10, speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 2 },
-      { x: -4, y: 0, z: 0,   speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1, modelIndex: 2 },
-      
-      // Outras ruas
-      { x: 8,  y: 0, z: 10, speed: 10,  minZ: -15, maxZ: 15, scale: 0.6, direction: -1, modelIndex: 3 },
-      { x: -8, y: 0, z: 0,  speed: 3.5, minZ: -15, maxZ: 15, scale: 0.6, direction: 1,  modelIndex: 3 },
-   ];
+   let trees = [];
 
    let player = {
-      x: -12,
+      x: -9,
       y: 0,
       z: 0,
       scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
@@ -456,12 +457,74 @@ async function main() {
    const MODEL_GRASS = 6;
    const MODEL_ROAD = 7;
 
+   //função de colisão com as ávrores
+   function checkCollisionWithTrees(newX, newZ) {
+   const COLLISION_SIZE = 0.5; // Meio "bloco" para cada lado
+   
+   return trees.some(tree => {
+      return Math.abs(tree.x - newX) < COLLISION_SIZE && 
+             Math.abs(tree.z - newZ) < COLLISION_SIZE;
+   });
+   }
 
+   function checkCollisionWithCars(newX, newZ) {
+   const COLLISION_SIZE = 0.7; // Meio "bloco" para cada lado
+
+   return cars.some(car => {
+      return Math.abs(car.x - newX) < COLLISION_SIZE &&
+               Math.abs(car.z - newZ) < COLLISION_SIZE;
+   });
+   }
+
+   function gameOver() {
+      isPaused = true;
+      isGameOver = true;
+      
+      // Atualiza a pontuação no modal
+      finalScoreElement.textContent = scoreElement.textContent;
+      
+      // Mostra o modal
+      gameOverModal.classList.remove('hidden');
+   }
+
+   function restartGame() {
+      // 1. Resetar flags
+      isPaused = false;
+      isGameOver = false;
+      
+      // 2. Resetar posição do jogador
+      player.x = -9;
+      player.z = 0;
+      player.rotationY = 90;
+      
+      // 3. Resetar câmera
+      cameraX = -12.0;
+      
+      // 4. Resetar pontuação
+      maxDistanceX = initialX;
+      scoreElement.textContent = "0";
+      
+      // 5. Limpar arrays
+      trees = [];
+      cars = [];
+      terrainRows.length = 0;
+      
+      // 6. Reinicializar terreno
+      initTerrain(-12);
+      
+      // 7. Esconder o modal
+      gameOverModal.classList.add('hidden');
+      
+      // 8. Resetar tempo
+      lastTime = null;
+   }
 
    // Função que cria uma nova linha lógica
    function createRow(xPosition) {
       // Lógica simples: aleatório, mas garantindo que o início (onde o player nasce) seja seguro
       let type = 'grass';
+      let roadDirection = null; // -1 (esquerda) ou 1 (direita)
+      let roadSpeed = null;
       
       // Se estiver longe do início, chance de ser rua
       // (Ajuste a lógica aqui para criar padrões mais complexos)
@@ -469,22 +532,88 @@ async function main() {
          type = 'road';
       }
 
-      // IMPORTANTE: Para manter compSatibilidade com seus carros atuais hardcoded,
-      // você pode forçar ruas em posições específicas se quiser, por exemplo:
-      if ([4, 0, -4, 8, -8].includes(Math.floor(xPosition))) type = 'road';
+      if (type === 'road') {
+      roadDirection = Math.random() < 0.5 ? -1 : 1;
+      roadSpeed = 3 + Math.random() * 7; // Velocidade aleatória 3-10
+      }
 
       return {
          x: xPosition,
          type: type,
-         modelIndex: type === 'grass' ? MODEL_GRASS : MODEL_ROAD
+         modelIndex: type === 'grass' ? MODEL_GRASS : MODEL_ROAD,
+         direction: roadDirection,
+         speed: roadSpeed,
+         cars: []
       };
    }
+
+   function spawnTreesOnRow(row) {
+   if (row.type !== 'grass') return; // Só spawna em grama
+   
+   const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+   
+   // Para cada posição Z (largura), chance de spawnar árvore
+   for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
+      if (Math.random() < 0.15) { // 15% de chance por tile
+         // Randomiza entre as 5 árvores (índices 8-12)
+         const randomTreeIndex = 8 + Math.floor(Math.random() * 5);
+         
+         trees.push({
+            x: row.x,
+            y: 0,
+            z: zOffset * 1.0,
+            scale: 0.8, // Ajuste o tamanho
+            modelIndex: randomTreeIndex,
+         });
+      }
+   }
+}
+
+function spawnCarsOnRow(row) {
+   if (row.type !== 'road') return; // Só spawna em ruas
+   
+   const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+   const MIN_DISTANCE = 3.0; // Distância mínima entre carros
+   
+   // Tenta spawnar alguns carros (2-4 por rua)
+   const numCars = Math.floor(Math.random() * 3) + 2;
+   
+   for (let i = 0; i < numCars; i++) {
+      // Posição Z aleatória
+      const randomZ = (Math.random() * (halfWidth * 2)) - halfWidth;
+      
+      // VERIFICAÇÃO DE COLISÃO: Checa se já existe carro próximo
+      const tooClose = cars.some(car => {
+         return car.x === row.x && Math.abs(car.z - randomZ) < MIN_DISTANCE;
+      });
+      
+      if (!tooClose) {
+         // Escolhe modelo de carro aleatório (índices 0-3)
+         const randomCarModel = Math.floor(Math.random() * 4);
+         
+         cars.push({
+            x: row.x,
+            y: 0,
+            z: randomZ,
+            speed: row.speed,        // Usa a velocidade da rua
+            direction: row.direction, // Usa a direção da rua
+            minZ: -halfWidth,
+            maxZ: halfWidth,
+            scale: 0.6,
+            modelIndex: randomCarModel
+         });
+      }
+   }
+}
 
    // Função para inicializar o mapa ao redor do jogador
    function initTerrain(startX) {
       for (let i = -10; i < DRAW_DISTANCE; i++) {
          const x = startX + (i * ROW_DEPTH);
-         terrainRows.push(createRow(x));
+         const newRow = createRow(x);
+         terrainRows.push(newRow);
+         spawnTreesOnRow(newRow);
+         spawnCarsOnRow(newRow);
       }
    }
 
@@ -498,6 +627,9 @@ async function main() {
          terrainRows.shift(); // Remove a primeira linha (mais antiga)
       }
 
+      // removendo arvores e carros fora da camera
+      trees = trees.filter(tree => tree.x >= removeThreshold);
+      cars = cars.filter(car => car.x >= removeThreshold);
       // 2. Adicionar linhas novas à frente
       // Pega a posição Y da última linha gerada
       let lastX = terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].x : 0;
@@ -507,7 +639,10 @@ async function main() {
 
       while (lastX < addThreshold) {
          lastX += ROW_DEPTH;
-         terrainRows.push(createRow(lastX));
+         const newRow = createRow(lastX);
+         terrainRows.push(newRow);
+         spawnTreesOnRow(newRow);
+         spawnCarsOnRow(newRow);
       }
    }
 
@@ -652,6 +787,11 @@ async function main() {
       "../OBJ/snowman.obj",
       "../OBJ/grass.obj",
       "../OBJ/road.obj",
+      "../OBJ/tree1.obj",
+      "../OBJ/tree2.obj",
+      "../OBJ/tree3.obj",
+      "../OBJ/tree4.obj",
+      "../OBJ/tree5.obj"
    ];
 
    // Carrega todos os modelos OBJ
@@ -787,6 +927,11 @@ async function main() {
    }
 
    let isPaused = false;
+   let isGameOver = false;
+
+   const gameOverModal = document.getElementById('gameOverModal');
+   const finalScoreElement = document.getElementById('finalScore');
+   const restartBtn = document.getElementById('restartBtn');
 
    const pauseBtn = document.getElementById("pauseBtn");
    pauseBtn.addEventListener("click", () => {
@@ -797,8 +942,12 @@ async function main() {
       pauseBtn.blur();
    });
 
+   restartBtn.addEventListener('click', () => {
+      restartGame();
+   });
+
    // PONTUAÇÃO
-   const initialX = -12.0; // Mesma posição inicial do player definida no objeto player
+   const initialX = -9.0; // Mesma posição inicial do player definida no objeto player
    let maxDistanceX = initialX; // Guarda a posição mais longe que a rena já chegou
 
    const scoreElement = document.getElementById("score");
@@ -900,7 +1049,18 @@ async function main() {
 
       // Atualiza posição de todos os carros
       cars.forEach((car) => {
-         car.z += car.speed * car.direction * dt;
+            const newZ = car.z + (car.speed * car.direction * dt);
+   
+         // Verifica se a nova posição colidiria com outro carro
+         const wouldCollide = cars.some(otherCar => {
+            return otherCar !== car && 
+                  otherCar.x === car.x && 
+                  Math.abs(otherCar.z - newZ) < 2.0; // Raio de colisão
+         });
+         
+         if (!wouldCollide) {
+            car.z = newZ;
+         }
 
          // Loop infinito: verifica movimento real (speed * direction)
          const velocidadeReal = car.speed * car.direction;
@@ -910,6 +1070,10 @@ async function main() {
             car.z = car.maxZ;
          }
       });
+
+      if (checkCollisionWithCars(player.x, player.z)) {
+      gameOver();
+      }
 
       updateTerrain(cameraX);
 
@@ -923,6 +1087,12 @@ async function main() {
 
       drawTerrain();
 
+      
+      // Desenha as árvores
+      trees.forEach(tree => {
+         drawObj(tree);
+      });
+      
       // Desenha todos os carros
       cars.forEach((car) => {
          drawObj(car);
