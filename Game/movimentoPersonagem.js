@@ -67,6 +67,37 @@ const fragmentShaderSource = `
     }
 `;
 
+// A versão original do m4.js estava invertendo os eixos e causando tela preta.
+if (typeof m4 !== "undefined") {
+   m4.setPerspectiveProjectionMatrix = function (
+      xw_min,
+      xw_max,
+      yw_min,
+      yw_max,
+      z_near,
+      z_far
+   ) {
+      return [
+         (2 * z_near) / (xw_max - xw_min),
+         0,
+         0,
+         0,
+         0,
+         (2 * z_near) / (yw_max - yw_min),
+         0,
+         0,
+         (xw_max + xw_min) / (xw_max - xw_min),
+         (yw_max + yw_min) / (yw_max - yw_min),
+         -(z_far + z_near) / (z_far - z_near),
+         -1,
+         0,
+         0,
+         -(2 * z_near * z_far) / (z_far - z_near),
+         0,
+      ];
+   };
+}
+
 function createShader(gl, type, source) {
    const shader = gl.createShader(type);
    gl.shaderSource(shader, source);
@@ -326,8 +357,8 @@ async function main() {
    let color = [1.0, 0.0, 0.0];
    gl.uniform3fv(colorUniformLocation, new Float32Array(color));
 
-   let xw_min = -6.0;
-   let xw_max = 6.0;
+   let xw_min = -4.0;
+   let xw_max = 4.0;
 
    const aspect = gl.canvas.width / gl.canvas.height;
    const worldWidth = xw_max - xw_min;
@@ -352,6 +383,61 @@ async function main() {
    let rotateY = 0;
    let rotateZ = 0;
 
+   // --- ESTADOS DE CÂMERA E PROJEÇÃO ---
+   let projectionMode = "ortho"; // 'ortho' ou 'perspective'
+   let cameraMode = 0; // 0: Padrão, 1: Topo
+
+   // Configurações para Perspectiva (Field of View simulado)
+   // Precisamos de planos 'near' positivos para perspectiva funcionar matematicamente bem
+   const persp_near = 1.0;
+   const persp_far = 200.0;
+
+   // Configurações para Ortográfica (Zoom ajustado)
+   // O z_near/far aqui funciona diferente, é uma "caixa" de recorte
+   const ortho_near = 100.0;
+   const ortho_far = -500.0;
+
+   // Função para atualizar a matriz de projeção baseada no estado atual
+   function updateProjection() {
+      const aspect = gl.canvas.width / gl.canvas.height;
+
+      if (projectionMode === "ortho") {
+         // Mantemos o zoom que definimos antes (-4 a 4)
+         let width = 8.0;
+         let height = width / aspect;
+
+         projectionMatrix = m4.setOrthographicProjectionMatrix(
+            -width / 2,
+            width / 2,
+            -height / 2,
+            height / 2,
+            ortho_near,
+            ortho_far
+         );
+      } else {
+         // Perspectiva: A janela (xw_min/max) é definida NO PLANO NEAR.
+         // Valores pequenos aqui dão um FOV maior (grande angular).
+         let width = 1.0;
+         let height = width / aspect;
+
+         projectionMatrix = m4.setPerspectiveProjectionMatrix(
+            -width / 2,
+            width / 2,
+            -height / 2,
+            height / 2,
+            persp_near,
+            persp_far
+         );
+      }
+   }
+
+   // Chama uma vez para iniciar
+   updateProjection();
+
+   // --- VARIÁVEL PARA CONTROLE DE DELAY (INPUT) ---
+   let canMove = true;
+   const MOVE_COOLDOWN = 0.1; // milissegundos
+
    const bodyElement = document.querySelector("body");
    bodyElement.addEventListener("keydown", keyDown, false);
 
@@ -359,7 +445,8 @@ async function main() {
 
    function keyDown(event) {
       // Não previne o default se for F5/F12, mas para jogo previne scroll
-      if (isPaused) return;
+      const boundaryLimit = Math.floor(TERRAIN_WIDTH / 4) + 1;
+      if (isPaused || !canMove) return;
 
       if (
          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
@@ -369,63 +456,78 @@ async function main() {
          event.preventDefault();
       }
 
+      let moved = false;
+
       switch (
          event.key.toLowerCase() // toLowerCase permite usar 'W' ou 'w'
       ) {
          // Controles da Câmera (Existentes)
          case "1":
-            projectionMatrix = m4.setOrthographicProjectionMatrix(
-               xw_min,
-               xw_max,
-               yw_min,
-               yw_max,
-               z_near,
-               z_far
-            );
+            projectionMode = "ortho";
+            updateProjection();
+            console.log("Modo: Ortográfico");
             break;
          case "2":
-            projectionMatrix = m4.setPerspectiveProjectionMatrix(
-               xw_min,
-               xw_max,
-               yw_min,
-               yw_max,
-               z_near,
-               z_far
-            );
+            projectionMode = "perspective";
+            updateProjection();
+            console.log("Modo: Perspectiva");
+            break;
+
+         // --- TROCA DE CÂMERA (Tecla C) ---
+         case "c":
+            cameraMode = (cameraMode + 1) % 2; // Cicla 0, 1, 2
+            console.log("Câmera:", cameraMode);
             break;
 
          // --- Controles da Rena (Novos) ---
          case "w":
-         const newXForward = player.x + step;
-         if (!checkCollisionWithTrees(newXForward, player.z)) {
-            player.x = newXForward;
-         }
-         player.rotationY = 90;
-         break;
-         
-      case "s":
-         const newXBackward = player.x - step;
-         if (!checkCollisionWithTrees(newXBackward, player.z)) {
-            player.x = newXBackward;
-         }
-         player.rotationY = 270;
-         break;
-         
-      case "a":
-         const newZLeft = player.z - step;
-         if (!checkCollisionWithTrees(player.x, newZLeft)) {
-            player.z = newZLeft;
-         }
-         player.rotationY = 180;
-         break;
-         
-      case "d":
-         const newZRight = player.z + step;
-         if (!checkCollisionWithTrees(player.x, newZRight)) {
-            player.z = newZRight;
-         }
-         player.rotationY = 0;
-         break;
+            const newXForward = player.x + step;
+            if (!checkCollisionWithTrees(newXForward, player.z)) {
+               player.x = newXForward;
+               moved = true;
+            }
+            player.rotationY = 90;
+            break;
+
+         case "s":
+            const newXBackward = player.x - step;
+            if (!checkCollisionWithTrees(newXBackward, player.z)) {
+               player.x = newXBackward;
+               moved = true;
+            }
+            player.rotationY = 270;
+            break;
+
+         case "a":
+            const newZLeft = player.z - step;
+            if (
+               newZLeft >= -boundaryLimit &&
+               !checkCollisionWithTrees(player.x, newZLeft)
+            ) {
+               player.z = newZLeft;
+               moved = true;
+            }
+            player.rotationY = 180;
+            break;
+
+         case "d":
+            const newZRight = player.z + step;
+            if (
+               newZRight <= boundaryLimit &&
+               !checkCollisionWithTrees(player.x, newZRight)
+            ) {
+               player.z = newZRight;
+               moved = true;
+            }
+            player.rotationY = 0;
+            break;
+      }
+
+      if (moved) {
+         canMove = false;
+         setTimeout(() => {
+            canMove = true;
+         }, MOVE_COOLDOWN);
       }
    }
 
@@ -439,7 +541,7 @@ async function main() {
    let trees = [];
 
    let player = {
-      x: -9,
+      x: -5,
       y: 0,
       z: 0,
       scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
@@ -449,167 +551,180 @@ async function main() {
 
    // --- VARIÁVEIS DO MAPA ---
    const terrainRows = []; // Lista que guarda as linhas ativas (rua ou grama)
-   const ROW_DEPTH = 1.0;  // Profundidade de cada linha (igual ao 'step' do player)
-   const TERRAIN_WIDTH = 21; // Quantos blocos de largura (ímpar para centralizar em 0)
+   const ROW_DEPTH = 1.0; // Profundidade de cada linha (igual ao 'step' do player)
+   const TERRAIN_WIDTH = 31; // Quantos blocos de largura (ímpar para centralizar em 0)
+   //talvez mudar para 51 resolva a cãmera perspectiva
+
    const DRAW_DISTANCE = 40; // Quantas linhas desenhar à frente/atrás
-   
+
    // Índices dos modelos no array 'models' (ajuste se a ordem mudar)
    const MODEL_GRASS = 6;
    const MODEL_ROAD = 7;
 
    //função de colisão com as ávrores
    function checkCollisionWithTrees(newX, newZ) {
-   const COLLISION_SIZE = 0.5; // Meio "bloco" para cada lado
-   
-   return trees.some(tree => {
-      return Math.abs(tree.x - newX) < COLLISION_SIZE && 
-             Math.abs(tree.z - newZ) < COLLISION_SIZE;
-   });
+      const COLLISION_SIZE = 0.5; // Meio "bloco" para cada lado
+
+      return trees.some((tree) => {
+         return (
+            Math.abs(tree.x - newX) < COLLISION_SIZE &&
+            Math.abs(tree.z - newZ) < COLLISION_SIZE
+         );
+      });
    }
 
    function checkCollisionWithCars(newX, newZ) {
-   const COLLISION_SIZE = 0.7; // Meio "bloco" para cada lado
+      const COLLISION_SIZE = 0.7; // Meio "bloco" para cada lado
 
-   return cars.some(car => {
-      return Math.abs(car.x - newX) < COLLISION_SIZE &&
-               Math.abs(car.z - newZ) < COLLISION_SIZE;
-   });
+      return cars.some((car) => {
+         return (
+            Math.abs(car.x - newX) < COLLISION_SIZE &&
+            Math.abs(car.z - newZ) < COLLISION_SIZE
+         );
+      });
    }
 
    function gameOver() {
       isPaused = true;
       isGameOver = true;
-      
+
       // Atualiza a pontuação no modal
       finalScoreElement.textContent = scoreElement.textContent;
-      
+
       // Mostra o modal
-      gameOverModal.classList.remove('hidden');
+      gameOverModal.classList.remove("hidden");
    }
 
    function restartGame() {
       // 1. Resetar flags
       isPaused = false;
       isGameOver = false;
-      
+
       // 2. Resetar posição do jogador
-      player.x = -9;
+      player.x = -5;
       player.z = 0;
       player.rotationY = 90;
-      
+
       // 3. Resetar câmera
       cameraX = -12.0;
-      
+
       // 4. Resetar pontuação
       maxDistanceX = initialX;
       scoreElement.textContent = "0";
-      
+
       // 5. Limpar arrays
       trees = [];
       cars = [];
       terrainRows.length = 0;
-      
+
       // 6. Reinicializar terreno
       initTerrain(-12);
-      
+
       // 7. Esconder o modal
-      gameOverModal.classList.add('hidden');
-      
+      gameOverModal.classList.add("hidden");
+
       // 8. Resetar tempo
       lastTime = null;
+      canMove = true;
    }
 
    // Função que cria uma nova linha lógica
    function createRow(xPosition) {
       // Lógica simples: aleatório, mas garantindo que o início (onde o player nasce) seja seguro
-      let type = 'grass';
+      let type = "grass";
       let roadDirection = null; // -1 (esquerda) ou 1 (direita)
       let roadSpeed = null;
-      
+
       // Se estiver longe do início, chance de ser rua
       // (Ajuste a lógica aqui para criar padrões mais complexos)
       if (xPosition > -5 && Math.random() < 0.4) {
-         type = 'road';
+         type = "road";
       }
 
-      if (type === 'road') {
-      roadDirection = Math.random() < 0.5 ? -1 : 1;
-      roadSpeed = 3 + Math.random() * 7; // Velocidade aleatória 3-10
+      if (type === "road") {
+         roadDirection = Math.random() < 0.5 ? -1 : 1;
+         roadSpeed = 3 + Math.random() * 7; // Velocidade aleatória 3-10
       }
 
       return {
          x: xPosition,
          type: type,
-         modelIndex: type === 'grass' ? MODEL_GRASS : MODEL_ROAD,
+         modelIndex: type === "grass" ? MODEL_GRASS : MODEL_ROAD,
          direction: roadDirection,
          speed: roadSpeed,
-         cars: []
+         cars: [],
       };
    }
 
    function spawnTreesOnRow(row) {
-   if (row.type !== 'grass') return; // Só spawna em grama
-   
-   const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
-   
-   // Para cada posição Z (largura), chance de spawnar árvore
-   for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
-      if (Math.random() < 0.15) { // 15% de chance por tile
-         // Randomiza entre as 5 árvores (índices 8-12)
-         const randomTreeIndex = 8 + Math.floor(Math.random() * 5);
-         
-         trees.push({
-            x: row.x,
-            y: 0,
-            z: zOffset * 1.0,
-            scale: 0.8, // Ajuste o tamanho
-            modelIndex: randomTreeIndex,
-         });
-      }
-   }
-}
+      if (row.type !== "grass") return; // Só spawna em grama
 
-function spawnCarsOnRow(row) {
-   if (row.type !== 'road') return; // Só spawna em ruas
-   
-   const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
-   const MIN_DISTANCE = 3.0; // Distância mínima entre carros
-   
-   // Tenta spawnar alguns carros (2-4 por rua)
-   const numCars = Math.floor(Math.random() * 3) + 2;
-   
-   for (let i = 0; i < numCars; i++) {
-      // Posição Z aleatória
-      const randomZ = (Math.random() * (halfWidth * 2)) - halfWidth;
-      
-      // VERIFICAÇÃO DE COLISÃO: Checa se já existe carro próximo
-      const tooClose = cars.some(car => {
-         return car.x === row.x && Math.abs(car.z - randomZ) < MIN_DISTANCE;
-      });
-      
-      if (!tooClose) {
-         // Escolhe modelo de carro aleatório (índices 0-3)
-         const randomCarModel = Math.floor(Math.random() * 4);
-         
-         cars.push({
-            x: row.x,
-            y: 0,
-            z: randomZ,
-            speed: row.speed,        // Usa a velocidade da rua
-            direction: row.direction, // Usa a direção da rua
-            minZ: -halfWidth,
-            maxZ: halfWidth,
-            scale: 0.6,
-            modelIndex: randomCarModel
-         });
+      const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+
+      // Para cada posição Z (largura), chance de spawnar árvore
+      for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
+         // Se estiver muito perto de (-5, 0), não cria árvore.
+         if (Math.abs(row.x - -5) < 3.0 && Math.abs(zOffset * 1.0) < 3.0) {
+            continue;
+         }
+
+         if (Math.random() < 0.15) {
+            // 15% de chance por tile
+            // Randomiza entre as 5 árvores (índices 8-12)
+            const randomTreeIndex = 8 + Math.floor(Math.random() * 5);
+
+            trees.push({
+               x: row.x,
+               y: 0,
+               z: zOffset * 1.0,
+               scale: 0.8, // Ajuste o tamanho
+               modelIndex: randomTreeIndex,
+            });
+         }
       }
    }
-}
+
+   function spawnCarsOnRow(row) {
+      if (row.type !== "road") return; // Só spawna em ruas
+
+      const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
+      const MIN_DISTANCE = 3.0; // Distância mínima entre carros
+
+      // Tenta spawnar alguns carros (2-4 por rua)
+      const numCars = Math.floor(Math.random() * 3) + 2;
+
+      for (let i = 0; i < numCars; i++) {
+         // Posição Z aleatória
+         const randomZ = Math.random() * (halfWidth * 2) - halfWidth;
+
+         // VERIFICAÇÃO DE COLISÃO: Checa se já existe carro próximo
+         const tooClose = cars.some((car) => {
+            return car.x === row.x && Math.abs(car.z - randomZ) < MIN_DISTANCE;
+         });
+
+         if (!tooClose) {
+            // Escolhe modelo de carro aleatório (índices 0-3)
+            const randomCarModel = Math.floor(Math.random() * 4);
+
+            cars.push({
+               x: row.x,
+               y: 0,
+               z: randomZ,
+               speed: row.speed, // Usa a velocidade da rua
+               direction: row.direction, // Usa a direção da rua
+               minZ: -halfWidth,
+               maxZ: halfWidth,
+               scale: 0.6,
+               modelIndex: randomCarModel,
+            });
+         }
+      }
+   }
 
    // Função para inicializar o mapa ao redor do jogador
    function initTerrain(startX) {
       for (let i = -10; i < DRAW_DISTANCE; i++) {
-         const x = startX + (i * ROW_DEPTH);
+         const x = startX + i * ROW_DEPTH;
          const newRow = createRow(x);
          terrainRows.push(newRow);
          spawnTreesOnRow(newRow);
@@ -621,19 +736,20 @@ function spawnCarsOnRow(row) {
    function updateTerrain(currentCameraX) {
       // 1. Remover linhas que ficaram muito para trás
       // Limite inferior (atrás da câmera)
-      const removeThreshold = currentCameraX - 15.0; 
-      
+      const removeThreshold = currentCameraX - 15.0;
+
       while (terrainRows.length > 0 && terrainRows[0].x < removeThreshold) {
          terrainRows.shift(); // Remove a primeira linha (mais antiga)
       }
 
       // removendo arvores e carros fora da camera
-      trees = trees.filter(tree => tree.x >= removeThreshold);
-      cars = cars.filter(car => car.x >= removeThreshold);
+      trees = trees.filter((tree) => tree.x >= removeThreshold);
+      cars = cars.filter((car) => car.x >= removeThreshold);
       // 2. Adicionar linhas novas à frente
       // Pega a posição Y da última linha gerada
-      let lastX = terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].x : 0;
-      
+      let lastX =
+         terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].x : 0;
+
       // Limite superior (à frente da câmera)
       const addThreshold = currentCameraX + DRAW_DISTANCE;
 
@@ -649,11 +765,11 @@ function spawnCarsOnRow(row) {
    // Função de renderização específica para o terreno
 
    // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE =====
-// ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE (CORRIGIDA) =====
-// ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO COM TEXTURA =====
+   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE (CORRIGIDA) =====
+   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO COM TEXTURA =====
    function drawTerrain() {
       const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
-      
+
       const grassTiles = [];
       const roadTiles = [];
 
@@ -661,9 +777,9 @@ function spawnCarsOnRow(row) {
          for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
             const transform = {
                x: row.x,
-               y: -0.01, 
+               y: -0.01,
                z: zOffset * 1.0,
-               scale: 1.0 // Se precisar ajustar o tamanho do tile, mude aqui
+               scale: 1.0, // Se precisar ajustar o tamanho do tile, mude aqui
             };
 
             if (row.modelIndex === MODEL_GRASS) {
@@ -698,28 +814,52 @@ function spawnCarsOnRow(row) {
          // 2. CONFIGURAÇÃO DE TEXTURA (A Mudança Principal)
          // Define a cor como BRANCO para não alterar as cores originais da imagem
          gl.uniform3fv(colorUniformLocation, new Float32Array([1.0, 1.0, 1.0]));
-         
+
          // Ativa a textura
          gl.activeTexture(gl.TEXTURE0);
          gl.bindTexture(gl.TEXTURE_2D, texture); // Usa a textura global carregada
          gl.uniform1i(textureUniformLocation, 0);
-         
+
          // Diz ao shader: "Sim, use a textura!"
-         gl.uniform1i(useTextureUniformLocation, 1); 
+         gl.uniform1i(useTextureUniformLocation, 1);
 
          // 3. Loop de Desenho
          for (const tile of tiles) {
             let modelViewMatrix = m4.identity();
             // modelViewMatrix = m4.scale(modelViewMatrix, tile.scale, tile.scale, tile.scale);
-            modelViewMatrix = m4.translate(modelViewMatrix, tile.x, tile.y, tile.z);
+            modelViewMatrix = m4.translate(
+               modelViewMatrix,
+               tile.x,
+               tile.y,
+               tile.z
+            );
 
-            let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
+            let inverseTransposeModelViewMatrix = m4.transpose(
+               m4.inverse(modelViewMatrix)
+            );
 
-            gl.uniformMatrix4fv(modelViewMatrixUniformLocation, false, modelViewMatrix);
-            gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation, false, inverseTransposeModelViewMatrix);
-            gl.uniformMatrix4fv(projectionMatrixUniformLocation, false, projectionMatrix);
+            gl.uniformMatrix4fv(
+               modelViewMatrixUniformLocation,
+               false,
+               modelViewMatrix
+            );
+            gl.uniformMatrix4fv(
+               inverseTransposeModelViewMatrixUniformLocation,
+               false,
+               inverseTransposeModelViewMatrix
+            );
+            gl.uniformMatrix4fv(
+               projectionMatrixUniformLocation,
+               false,
+               projectionMatrix
+            );
 
-            gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_SHORT, 0);
+            gl.drawElements(
+               gl.TRIANGLES,
+               buffers.indexCount,
+               gl.UNSIGNED_SHORT,
+               0
+            );
          }
       }
 
@@ -791,7 +931,7 @@ function spawnCarsOnRow(row) {
       "../OBJ/tree2.obj",
       "../OBJ/tree3.obj",
       "../OBJ/tree4.obj",
-      "../OBJ/tree5.obj"
+      "../OBJ/tree5.obj",
    ];
 
    // Carrega todos os modelos OBJ
@@ -842,7 +982,7 @@ function spawnCarsOnRow(row) {
 
    // ===== OTIMIZAÇÃO 1: BUFFERS PERMANENTES =====
    // Criar buffers WebGL permanentes para cada modelo
-   const modelBuffers = models.map(model => {
+   const modelBuffers = models.map((model) => {
       const vbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
       gl.bufferData(gl.ARRAY_BUFFER, model.vertices, gl.STATIC_DRAW);
@@ -864,11 +1004,11 @@ function spawnCarsOnRow(row) {
          normalBuffer: nbo,
          texcoordBuffer: tbo,
          indexBuffer: ibo,
-         indexCount: model.indices.length
+         indexCount: model.indices.length,
       };
    });
 
-// ===== OTIMIZAÇÃO 2: FUNÇÃO DE DESENHO OTIMIZADA =====
+   // ===== OTIMIZAÇÃO 2: FUNÇÃO DE DESENHO OTIMIZADA =====
    function drawObj(obj) {
       const modelIndex = obj.modelIndex % models.length;
       const buffers = modelBuffers[modelIndex];
@@ -892,8 +1032,9 @@ function spawnCarsOnRow(row) {
       let objColor = obj.color || [1.0, 1.0, 1.0];
       gl.uniform3fv(colorUniformLocation, new Float32Array(objColor));
 
-      let shouldUseTexture = (obj.useTexture !== undefined) ? obj.useTexture : useTexture;
-      
+      let shouldUseTexture =
+         obj.useTexture !== undefined ? obj.useTexture : useTexture;
+
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.uniform1i(textureUniformLocation, 0);
@@ -901,7 +1042,12 @@ function spawnCarsOnRow(row) {
 
       // Matrizes
       let modelViewMatrix = m4.identity();
-      modelViewMatrix = m4.scale(modelViewMatrix, obj.scale, obj.scale, obj.scale);
+      modelViewMatrix = m4.scale(
+         modelViewMatrix,
+         obj.scale,
+         obj.scale,
+         obj.scale
+      );
 
       let rotationAngle = 0;
       if (obj.rotationY !== undefined) {
@@ -910,18 +1056,32 @@ function spawnCarsOnRow(row) {
          rotationAngle = obj.direction === 1 ? 0 : 180;
       }
       modelViewMatrix = m4.yRotate(modelViewMatrix, degToRad(rotationAngle));
-      
+
       if (obj.rotationX) {
          modelViewMatrix = m4.xRotate(modelViewMatrix, degToRad(obj.rotationX));
       }
 
       modelViewMatrix = m4.translate(modelViewMatrix, obj.x, obj.y, obj.z);
 
-      let inverseTransposeModelViewMatrix = m4.transpose(m4.inverse(modelViewMatrix));
+      let inverseTransposeModelViewMatrix = m4.transpose(
+         m4.inverse(modelViewMatrix)
+      );
 
-      gl.uniformMatrix4fv(modelViewMatrixUniformLocation, false, modelViewMatrix);
-      gl.uniformMatrix4fv(inverseTransposeModelViewMatrixUniformLocation, false, inverseTransposeModelViewMatrix);
-      gl.uniformMatrix4fv(projectionMatrixUniformLocation, false, projectionMatrix);
+      gl.uniformMatrix4fv(
+         modelViewMatrixUniformLocation,
+         false,
+         modelViewMatrix
+      );
+      gl.uniformMatrix4fv(
+         inverseTransposeModelViewMatrixUniformLocation,
+         false,
+         inverseTransposeModelViewMatrix
+      );
+      gl.uniformMatrix4fv(
+         projectionMatrixUniformLocation,
+         false,
+         projectionMatrix
+      );
 
       gl.drawElements(gl.TRIANGLES, buffers.indexCount, gl.UNSIGNED_SHORT, 0);
    }
@@ -929,9 +1089,9 @@ function spawnCarsOnRow(row) {
    let isPaused = false;
    let isGameOver = false;
 
-   const gameOverModal = document.getElementById('gameOverModal');
-   const finalScoreElement = document.getElementById('finalScore');
-   const restartBtn = document.getElementById('restartBtn');
+   const gameOverModal = document.getElementById("gameOverModal");
+   const finalScoreElement = document.getElementById("finalScore");
+   const restartBtn = document.getElementById("restartBtn");
 
    const pauseBtn = document.getElementById("pauseBtn");
    pauseBtn.addEventListener("click", () => {
@@ -942,12 +1102,12 @@ function spawnCarsOnRow(row) {
       pauseBtn.blur();
    });
 
-   restartBtn.addEventListener('click', () => {
+   restartBtn.addEventListener("click", () => {
       restartGame();
    });
 
    // PONTUAÇÃO
-   const initialX = -9.0; // Mesma posição inicial do player definida no objeto player
+   const initialX = -5; // Mesma posição inicial do player definida no objeto player
    let maxDistanceX = initialX; // Guarda a posição mais longe que a rena já chegou
 
    const scoreElement = document.getElementById("score");
@@ -998,6 +1158,11 @@ function spawnCarsOnRow(row) {
 
       cameraX += scrollSpeed * dt;
 
+      if (player.x < cameraX + 3.8) {
+         // valor escolhido a dedo, talvez seja necessário trocar
+         gameOver();
+      }
+
       //Verifica o limite de 1/3 da tela
       // O centro da tela (TargetY) é "cameraY + lookAhead".
       // A base da tela é "CenterY - worldHeight/2".
@@ -1007,7 +1172,7 @@ function spawnCarsOnRow(row) {
       const lookAhead = 10.0;
 
       // Essa fórmula garante que o jogador fique na linha de 1/3 visualmente
-      // CenterY = PlayerY + H/6 (H/6 é a diferença entre o meio e o 1/3 inferior)
+      // CenterY = PlayerY + H/6 (H/6 é a diferença entre o meio e o 1/3 inferior)f
       // Como CenterY = cameraY + lookAhead, isolamos o cameraY:
       const minCameraYForPlayer = player.x + worldHeight / 6.0 - lookAhead;
 
@@ -1017,7 +1182,7 @@ function spawnCarsOnRow(row) {
       }
 
       let targetX = cameraX + lookAhead;
-      let targetY = 0.0; 
+      let targetY = 0.0;
       let targetZ = player.z;
 
       let Pref = [targetX, targetY, targetZ];
@@ -1028,8 +1193,30 @@ function spawnCarsOnRow(row) {
       let P0 = [
          targetX - 10, // Segue lateralmente
          targetY + 15.0, // Mantém altura/distância Y
-         targetZ + 1.0, 
+         targetZ + 1.0,
       ];
+
+      if (projectionMode === "perspective") {
+         // Câmera mais alta e mais afastada para trás, mas com zoom (definido no updateProjection)
+         // Isso cria um efeito "Cinemático" estilo jogo de console
+         P0 = [
+            targetX - 25.0, // Bem mais para trás
+            targetY + 20.0, // Bem alto
+            targetZ + 0.0,
+         ];
+      } else {
+         // --- MODO ORTOGRÁFICO (Mantém sua lógica de Câmeras C) ---
+         switch (cameraMode) {
+            case 0: // PADRÃO (Isométrica)
+               P0 = [targetX - 10.0, targetY + 15.0, targetZ + 1.0];
+               break;
+            case 1: // TOP-DOWN
+               P0 = [targetX - 0.1, targetY + 30.0, targetZ];
+               // Ajuste o vetor UP para não dar problema no top-down estrito
+               if (cameraMode === 1) V = [1.0, 0.0, 0.0];
+               break;
+         }
+      }
 
       // 3. Recalcula a matriz
       // Nota: 'V' (vetor up [0,1,0]) deve estar acessível no escopo da main
@@ -1049,15 +1236,17 @@ function spawnCarsOnRow(row) {
 
       // Atualiza posição de todos os carros
       cars.forEach((car) => {
-            const newZ = car.z + (car.speed * car.direction * dt);
-   
+         const newZ = car.z + car.speed * car.direction * dt;
+
          // Verifica se a nova posição colidiria com outro carro
-         const wouldCollide = cars.some(otherCar => {
-            return otherCar !== car && 
-                  otherCar.x === car.x && 
-                  Math.abs(otherCar.z - newZ) < 2.0; // Raio de colisão
+         const wouldCollide = cars.some((otherCar) => {
+            return (
+               otherCar !== car &&
+               otherCar.x === car.x &&
+               Math.abs(otherCar.z - newZ) < 2.0
+            ); // Raio de colisão
          });
-         
+
          if (!wouldCollide) {
             car.z = newZ;
          }
@@ -1072,7 +1261,7 @@ function spawnCarsOnRow(row) {
       });
 
       if (checkCollisionWithCars(player.x, player.z)) {
-      gameOver();
+         gameOver();
       }
 
       updateTerrain(cameraX);
@@ -1087,12 +1276,11 @@ function spawnCarsOnRow(row) {
 
       drawTerrain();
 
-      
       // Desenha as árvores
-      trees.forEach(tree => {
+      trees.forEach((tree) => {
          drawObj(tree);
       });
-      
+
       // Desenha todos os carros
       cars.forEach((car) => {
          drawObj(car);
@@ -1104,7 +1292,7 @@ function spawnCarsOnRow(row) {
 
       requestAnimationFrame(drawScene);
    }
-   
+
    // Inicializa o terreno ao redor da posição inicial do player (-12)
    initTerrain(-12);
 
