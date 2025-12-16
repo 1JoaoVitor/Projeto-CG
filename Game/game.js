@@ -400,10 +400,6 @@ async function main() {
       z_far
    );
 
-   let rotateX = 0;
-   let rotateY = 0;
-   let rotateZ = 0;
-
    let projectionMode = "ortho"; // 'ortho' ou 'perspective'
    let cameraMode = 0; // 0: Padrão, 1: 3° Pessoa, 2: Topo
 
@@ -1288,10 +1284,6 @@ async function main() {
       updateTerrain(cameraX);
 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-      if (rotateX) theta_x += 1;
-      if (rotateY) theta_y += 1;
-      if (rotateZ) theta_z += 1;
 
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
