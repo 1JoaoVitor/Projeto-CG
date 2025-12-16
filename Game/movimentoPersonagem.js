@@ -39,8 +39,8 @@ const fragmentShaderSource = `
     uniform vec3 u_lightPosition; 
 
     // Múltiplos Faróis (Spotlights)
-    // Vamos suportar até 4 faróis (2 carros mais próximos)
-    #define MAX_SPOTLIGHTS 4
+    // AUMENTADO DE 4 PARA 12 (Permite 6 carros iluminados)
+    #define MAX_SPOTLIGHTS 12
     uniform vec3 u_spotLightPos[MAX_SPOTLIGHTS];
     uniform vec3 u_spotLightDir[MAX_SPOTLIGHTS];
     uniform vec3 u_spotLightColor[MAX_SPOTLIGHTS];
@@ -57,7 +57,7 @@ const fragmentShaderSource = `
       vec3 viewDir = normalize(v_viewPosition - v_surfacePosition);
 
       // --- 1. LUZ AMBIENTE (Base) ---
-      vec3 ambient = 0.3 * baseColor; 
+      vec3 ambient = 0.1 * baseColor; 
 
       // --- 2. LUZ DIRECIONAL (Sol) ---
       vec3 sunDir = normalize(u_lightPosition - v_surfacePosition);
@@ -67,33 +67,32 @@ const fragmentShaderSource = `
       // Especular do Sol
       vec3 halfVector = normalize(sunDir + viewDir);
       float sunSpec = pow(max(dot(normal, halfVector), 0.0), 50.0);
-      vec3 specular = vec3(0.3) * sunSpec; // Brilho suave
+      vec3 specular = vec3(0.1) * sunSpec; // Brilho suave
 
       // --- 3. SPOTLIGHTS (Faróis) ---
       vec3 spotLightEffect = vec3(0.0);
 
       for(int i = 0; i < MAX_SPOTLIGHTS; i++) {
-          // Se a cor for preta, a luz está desligada
+          // Se a cor for preta, a luz está desligada (pula cálculo)
           if(length(u_spotLightColor[i]) < 0.01) continue;
 
           vec3 lightDir = normalize(u_spotLightPos[i] - v_surfacePosition);
           
           // Cálculo do Cone (Spotlight)
-          // theta é o ângulo entre a direção da luz e a direção do ponto
           float theta = dot(lightDir, normalize(-u_spotLightDir[i]));
           
           if(theta > u_spotLightCutoff) {
-              // Distância para atenuação (luz fica fraca longe)
+              // Distância para atenuação
               float distance = length(u_spotLightPos[i] - v_surfacePosition);
               float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
               
-              // Suavização da borda do farol
+              // Suavização da borda
               float epsilon = 0.1;
               float intensity = smoothstep(u_spotLightCutoff, u_spotLightCutoff + epsilon, theta);
               
               // Diffuse do Farol
               float diff = max(dot(normal, lightDir), 0.0);
-              spotLightEffect += u_spotLightColor[i] * diff * attenuation * intensity * 2.0; // 2.0 = Força do farol
+              spotLightEffect += u_spotLightColor[i] * diff * attenuation * intensity * 2.0; 
           }
       }
 
@@ -362,7 +361,7 @@ async function main() {
    );
 
    // --- UNIFORMS PARA SPOTLIGHTS (Faróis) ---
-   const MAX_SPOTLIGHTS = 4;
+   const MAX_SPOTLIGHTS = 12;
    const spotLightPosLocs = [];
    const spotLightDirLocs = [];
    const spotLightColorLocs = [];
@@ -1176,7 +1175,7 @@ async function main() {
       // 2. Encontrar os carros mais próximos do jogador
       // Filtra carros que estão na tela (perto da câmera) e ordena por distância
       const visibleCars = cars
-         .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 30)
+         .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 60)
          .sort((a, b) => {
             const distA = Math.sqrt(
                Math.pow(a.x - player.x, 2) + Math.pow(a.z - player.z, 2)
@@ -1189,7 +1188,7 @@ async function main() {
 
       // 3. Pegar os 2 primeiros carros e ligar os faróis (2 faróis por carro = 4 total)
       let lightIndex = 0;
-      for (let i = 0; i < Math.min(visibleCars.length, 2); i++) {
+      for (let i = 0; i < Math.min(visibleCars.length, 6); i++) {
          const car = visibleCars[i];
          const dirZ = car.direction; // 1 (direita) ou -1 (esquerda)
 
