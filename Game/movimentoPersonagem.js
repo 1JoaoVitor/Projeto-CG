@@ -1,12 +1,12 @@
-// Vertex shader source code
+// --- Vertex Shader: Agora passa a Posição no Mundo (World Position) ---
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
     attribute vec2 a_texcoord;
     
     varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
+    varying vec3 v_surfacePosition; 
+    varying vec3 v_viewPosition;    // Posição da câmera
     varying vec2 v_texcoord;
     
     uniform mat4 u_modelMatrix;
@@ -14,21 +14,20 @@ const vertexShaderSource = `
     uniform mat4 u_projectionMatrix;
     uniform mat4 u_inverseTransposeModelMatrix;
     
-
-    uniform vec3 u_lightPosition;
     uniform vec3 u_viewPosition;
 
     void main() {
-        gl_Position = u_projectionMatrix * u_viewingMatrix * u_modelMatrix * vec4(a_position,1.0);
+        vec4 worldPosition = u_modelMatrix * vec4(a_position, 1.0);
+        gl_Position = u_projectionMatrix * u_viewingMatrix * worldPosition;
+        
+        v_surfacePosition = worldPosition.xyz;
         v_normal = normalize(mat3(u_inverseTransposeModelMatrix) * a_normal);
-        vec3 surfacePosition = (u_modelMatrix * vec4(a_position, 1.0)).xyz;
-        v_surfaceToLight = u_lightPosition - surfacePosition;
-        v_surfaceToView = u_viewPosition - surfacePosition;
+        v_viewPosition = u_viewPosition;
         v_texcoord = a_texcoord;
     }
 `;
 
-// Fragment shader source code
+// --- Fragment Shader: Suporte a Múltiplos Spotlights (Faróis) ---
 const fragmentShaderSource = `
     precision mediump float;
     
@@ -36,34 +35,69 @@ const fragmentShaderSource = `
     uniform sampler2D u_texture;
     uniform bool u_useTexture;
 
+    // Luz Global (Sol)
+    uniform vec3 u_lightPosition; 
+
+    // Múltiplos Faróis (Spotlights)
+    // Vamos suportar até 4 faróis (2 carros mais próximos)
+    #define MAX_SPOTLIGHTS 4
+    uniform vec3 u_spotLightPos[MAX_SPOTLIGHTS];
+    uniform vec3 u_spotLightDir[MAX_SPOTLIGHTS];
+    uniform vec3 u_spotLightColor[MAX_SPOTLIGHTS];
+    uniform float u_spotLightCutoff; // Ângulo do cone
+
     varying vec3 v_normal;
-    varying vec3 v_surfaceToLight;
-    varying vec3 v_surfaceToView;
+    varying vec3 v_surfacePosition;
+    varying vec3 v_viewPosition;
     varying vec2 v_texcoord;
 
-    
     void main() {
       vec3 baseColor = u_useTexture ? texture2D(u_texture, v_texcoord).rgb : u_color;
-      
-      vec3 ambientReflection = baseColor;
-      vec3 diffuseReflection = baseColor;
-      vec3 specularReflection = vec3(1.0,1.0,1.0);
-
-      gl_FragColor = vec4(diffuseReflection, 1.0);
-
       vec3 normal = normalize(v_normal);
-      vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
-      vec3 surfaceToViewDirection = normalize(v_surfaceToView);
-      vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
+      vec3 viewDir = normalize(v_viewPosition - v_surfacePosition);
 
-      float light = dot(surfaceToLightDirection,normal);
-      float specular = 0.0;
-      if (light > 0.0) {
-        specular = pow(dot(normal, halfVector), 250.0);
+      // --- 1. LUZ AMBIENTE (Base) ---
+      vec3 ambient = 0.3 * baseColor; 
+
+      // --- 2. LUZ DIRECIONAL (Sol) ---
+      vec3 sunDir = normalize(u_lightPosition - v_surfacePosition);
+      float sunDiff = max(dot(normal, sunDir), 0.0);
+      vec3 diffuse = sunDiff * baseColor * 0.6; // 0.6 = Intensidade do sol
+
+      // Especular do Sol
+      vec3 halfVector = normalize(sunDir + viewDir);
+      float sunSpec = pow(max(dot(normal, halfVector), 0.0), 50.0);
+      vec3 specular = vec3(0.3) * sunSpec; // Brilho suave
+
+      // --- 3. SPOTLIGHTS (Faróis) ---
+      vec3 spotLightEffect = vec3(0.0);
+
+      for(int i = 0; i < MAX_SPOTLIGHTS; i++) {
+          // Se a cor for preta, a luz está desligada
+          if(length(u_spotLightColor[i]) < 0.01) continue;
+
+          vec3 lightDir = normalize(u_spotLightPos[i] - v_surfacePosition);
+          
+          // Cálculo do Cone (Spotlight)
+          // theta é o ângulo entre a direção da luz e a direção do ponto
+          float theta = dot(lightDir, normalize(-u_spotLightDir[i]));
+          
+          if(theta > u_spotLightCutoff) {
+              // Distância para atenuação (luz fica fraca longe)
+              float distance = length(u_spotLightPos[i] - v_surfacePosition);
+              float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
+              
+              // Suavização da borda do farol
+              float epsilon = 0.1;
+              float intensity = smoothstep(u_spotLightCutoff, u_spotLightCutoff + epsilon, theta);
+              
+              // Diffuse do Farol
+              float diff = max(dot(normal, lightDir), 0.0);
+              spotLightEffect += u_spotLightColor[i] * diff * attenuation * intensity * 2.0; // 2.0 = Força do farol
+          }
       }
 
-      gl_FragColor.rgb = 0.5*ambientReflection + 0.5*light*diffuseReflection;
-      gl_FragColor.rgb += specular*specularReflection;
+      gl_FragColor = vec4(ambient + diffuse + specular + spotLightEffect, 1.0);
     }
 `;
 
@@ -317,6 +351,7 @@ async function main() {
       `u_inverseTransposeModelMatrix`
    );
 
+   // Uniforms de Iluminação
    const lightPositionUniformLocation = gl.getUniformLocation(
       program,
       "u_lightPosition"
@@ -325,6 +360,31 @@ async function main() {
       program,
       "u_viewPosition"
    );
+
+   // --- UNIFORMS PARA SPOTLIGHTS (Faróis) ---
+   const MAX_SPOTLIGHTS = 4;
+   const spotLightPosLocs = [];
+   const spotLightDirLocs = [];
+   const spotLightColorLocs = [];
+   const spotLightCutoffLoc = gl.getUniformLocation(
+      program,
+      "u_spotLightCutoff"
+   );
+
+   for (let i = 0; i < MAX_SPOTLIGHTS; i++) {
+      spotLightPosLocs.push(
+         gl.getUniformLocation(program, `u_spotLightPos[${i}]`)
+      );
+      spotLightDirLocs.push(
+         gl.getUniformLocation(program, `u_spotLightDir[${i}]`)
+      );
+      spotLightColorLocs.push(
+         gl.getUniformLocation(program, `u_spotLightColor[${i}]`)
+      );
+   }
+
+   // Define o ângulo do farol (cos(30 graus) = ~0.86)
+   gl.uniform1f(spotLightCutoffLoc, 0.9); // Quanto mais perto de 1, mais fechado o foco
 
    gl.enable(gl.DEPTH_TEST);
    gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -434,10 +494,6 @@ async function main() {
    // Chama uma vez para iniciar
    updateProjection();
 
-   // --- VARIÁVEL PARA CONTROLE DE DELAY (INPUT) ---
-   let canMove = true;
-   const MOVE_COOLDOWN = 0.1; // milissegundos
-
    const bodyElement = document.querySelector("body");
    bodyElement.addEventListener("keydown", keyDown, false);
 
@@ -445,8 +501,11 @@ async function main() {
 
    function keyDown(event) {
       // Não previne o default se for F5/F12, mas para jogo previne scroll
+      if (event.repeat) return;
+
       const boundaryLimit = Math.floor(TERRAIN_WIDTH / 4) + 1;
-      if (isPaused || !canMove) return;
+
+      if (isPaused) return;
 
       if (
          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
@@ -455,8 +514,6 @@ async function main() {
       ) {
          event.preventDefault();
       }
-
-      let moved = false;
 
       switch (
          event.key.toLowerCase() // toLowerCase permite usar 'W' ou 'w'
@@ -475,16 +532,14 @@ async function main() {
 
          // --- TROCA DE CÂMERA (Tecla C) ---
          case "c":
-            cameraMode = (cameraMode + 1) % 2; // Cicla 0, 1, 2
+            cameraMode = (cameraMode + 1) % 2;
             console.log("Câmera:", cameraMode);
             break;
 
-         // --- Controles da Rena (Novos) ---
          case "w":
             const newXForward = player.x + step;
             if (!checkCollisionWithTrees(newXForward, player.z)) {
                player.x = newXForward;
-               moved = true;
             }
             player.rotationY = 90;
             break;
@@ -493,7 +548,6 @@ async function main() {
             const newXBackward = player.x - step;
             if (!checkCollisionWithTrees(newXBackward, player.z)) {
                player.x = newXBackward;
-               moved = true;
             }
             player.rotationY = 270;
             break;
@@ -505,7 +559,6 @@ async function main() {
                !checkCollisionWithTrees(player.x, newZLeft)
             ) {
                player.z = newZLeft;
-               moved = true;
             }
             player.rotationY = 180;
             break;
@@ -517,17 +570,9 @@ async function main() {
                !checkCollisionWithTrees(player.x, newZRight)
             ) {
                player.z = newZRight;
-               moved = true;
             }
             player.rotationY = 0;
             break;
-      }
-
-      if (moved) {
-         canMove = false;
-         setTimeout(() => {
-            canMove = true;
-         }, MOVE_COOLDOWN);
       }
    }
 
@@ -625,7 +670,6 @@ async function main() {
 
       // 8. Resetar tempo
       lastTime = null;
-      canMove = true;
    }
 
    // Função que cria uma nova linha lógica
@@ -1121,6 +1165,87 @@ async function main() {
    const scrollSpeed = 0.2;
 
    let frameCount = 0;
+
+   // Função para atualizar os faróis dos carros
+   function updateHeadlights() {
+      // 1. Resetar todas as luzes para "desligadas" (cor preta)
+      for (let i = 0; i < MAX_SPOTLIGHTS; i++) {
+         gl.uniform3fv(spotLightColorLocs[i], new Float32Array([0, 0, 0]));
+      }
+
+      // 2. Encontrar os carros mais próximos do jogador
+      // Filtra carros que estão na tela (perto da câmera) e ordena por distância
+      const visibleCars = cars
+         .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 30)
+         .sort((a, b) => {
+            const distA = Math.sqrt(
+               Math.pow(a.x - player.x, 2) + Math.pow(a.z - player.z, 2)
+            );
+            const distB = Math.sqrt(
+               Math.pow(b.x - player.x, 2) + Math.pow(b.z - player.z, 2)
+            );
+            return distA - distB;
+         });
+
+      // 3. Pegar os 2 primeiros carros e ligar os faróis (2 faróis por carro = 4 total)
+      let lightIndex = 0;
+      for (let i = 0; i < Math.min(visibleCars.length, 2); i++) {
+         const car = visibleCars[i];
+         const dirZ = car.direction; // 1 (direita) ou -1 (esquerda)
+
+         // Farol 1 (Esquerdo)
+         // Ajuste o offset conforme o tamanho do seu modelo de carro
+         const offsetZ1 = 0.3;
+         const offsetX = 0.8; // Farol está na frente do carro
+
+         // Posição: Centro do carro + Offset
+         // Como o carro anda em Z, a "frente" depende da direção
+         const lx1 = car.x;
+         const ly1 = car.y + 0.5; // Altura do farol
+         const lz1 = car.z + offsetZ1 * dirZ; // Na frente (Z)
+
+         // Farol 2 (Direito)
+         const lz2 = car.z - offsetZ1 * dirZ;
+
+         // Direção do facho de luz (Aponta para onde o carro vai: Eixo Z)
+         const lightDir = [0.0, -0.2, dirZ]; // Levemente para baixo e para frente Z
+
+         // Cor do Farol (Amarelo claro)
+         const lightColor = [1.0, 0.9, 0.6];
+
+         if (lightIndex < MAX_SPOTLIGHTS) {
+            gl.uniform3fv(
+               spotLightPosLocs[lightIndex],
+               new Float32Array([lx1 + 0.3, ly1, car.z + dirZ * 0.5])
+            ); // Ajuste fino da posição
+            gl.uniform3fv(
+               spotLightDirLocs[lightIndex],
+               new Float32Array(lightDir)
+            );
+            gl.uniform3fv(
+               spotLightColorLocs[lightIndex],
+               new Float32Array(lightColor)
+            );
+            lightIndex++;
+         }
+         if (lightIndex < MAX_SPOTLIGHTS) {
+            gl.uniform3fv(
+               spotLightPosLocs[lightIndex],
+               new Float32Array([lx1 - 0.3, ly1, car.z + dirZ * 0.5])
+            );
+            gl.uniform3fv(
+               spotLightDirLocs[lightIndex],
+               new Float32Array(lightDir)
+            );
+            gl.uniform3fv(
+               spotLightColorLocs[lightIndex],
+               new Float32Array(lightColor)
+            );
+            lightIndex++;
+         }
+      }
+   }
+
    function drawScene(time) {
       // --- LÓGICA DE PAUSE ---
       if (isPaused) {
@@ -1233,6 +1358,7 @@ async function main() {
       gl.uniform3fv(lightPositionUniformLocation, new Float32Array(lightPos));
 
       // ----------------------------------
+      updateHeadlights();
 
       // Atualiza posição de todos os carros
       cars.forEach((car) => {
