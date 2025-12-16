@@ -129,6 +129,7 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            margin-top: 40px;
          }
 
          .ornament {
@@ -180,6 +181,7 @@
                inset 0 2px 10px rgba(255, 255, 255, 0.1);
             border: 3px solid rgba(255, 215, 0, 0.5);
             align-self: start;
+            margin-top: 40px;
          }
 
          .score-container {
@@ -280,10 +282,36 @@
                inset 0 2px 10px rgba(255, 255, 255, 0.1);
             border: 3px solid rgba(255, 215, 0, 0.5);
             align-self: end;
-            margin-top: 15px;
+            margin-bottom: 40px;
          }
 
          .game-info p {
+            margin: 0 0 10px 0;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+            font-size: 1em;
+         }
+
+         .camera-controls-card {
+            grid-column: 3;
+            grid-row: 1;
+            align-self: end;
+            
+            text-align: center;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, rgba(0, 100, 0, 0.95) 0%, rgba(220, 20, 60, 0.95) 100%);
+            border-radius: 20px;
+            color: #ffd700;
+            font-size: 0.85em;
+            font-weight: 600;
+            box-shadow: 
+               0 8px 20px rgba(0, 0, 0, 0.5),
+               inset 0 2px 10px rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 215, 0, 0.5);
+            
+            margin-bottom: 40px;
+         }
+
+         .camera-controls-card p {
             margin: 0 0 10px 0;
             text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
             font-size: 1em;
@@ -532,6 +560,16 @@
                <span class="key-hint">D</span>
             </div>
          </div>
+
+         <div class="camera-controls-card">
+            <p>Mudar Câmera</p>
+            <div class="controls-hint">
+               <span class="key-hint">1</span>
+               <span class="key-hint">2</span>
+               <span class="key-hint">C</span>
+            </div>
+         </div>
+
       </div>
 
       <!-- Modal de Game Over -->
