@@ -500,6 +500,7 @@ async function main() {
       const boundaryLimit = Math.floor(TERRAIN_WIDTH / 4) + 1;
 
       if (isPaused) return;
+      if (player.isMoving) return;
 
       if (
          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
@@ -508,6 +509,11 @@ async function main() {
       ) {
          event.preventDefault();
       }
+
+      let proposedX = player.x;
+      let proposedZ = player.z;
+      let newRotation = player.rotationY;
+      let moved = false;
 
       switch (
          event.key.toLowerCase() // toLowerCase permite usar 'W' ou 'w'
@@ -531,42 +537,52 @@ async function main() {
             break;
 
          case "w":
-            const newXForward = player.x + step;
-            if (!checkCollisionWithTrees(newXForward, player.z)) {
-               player.x = newXForward;
-            }
-            player.rotationY = 90;
+            proposedX = player.x + step;
+            newRotation = 90;
+            moved = true;
             break;
-
          case "s":
-            const newXBackward = player.x - step;
-            if (!checkCollisionWithTrees(newXBackward, player.z)) {
-               player.x = newXBackward;
-            }
-            player.rotationY = 270;
+            proposedX = player.x - step;
+            newRotation = 270;
+            moved = true;
             break;
-
          case "a":
-            const newZLeft = player.z - step;
-            if (
-               newZLeft >= -boundaryLimit &&
-               !checkCollisionWithTrees(player.x, newZLeft)
-            ) {
-               player.z = newZLeft;
-            }
-            player.rotationY = 180;
+            proposedZ = player.z - step;
+            newRotation = 180;
+            moved = true;
             break;
-
          case "d":
-            const newZRight = player.z + step;
-            if (
-               newZRight <= boundaryLimit &&
-               !checkCollisionWithTrees(player.x, newZRight)
-            ) {
-               player.z = newZRight;
-            }
-            player.rotationY = 0;
+            proposedZ = player.z + step;
+            newRotation = 0;
+            moved = true;
             break;
+      }
+
+      if (moved) {
+         // Verifica colisões antes de iniciar o movimento
+         // Para 'a' e 'd' precisamos verificar os limites do mapa também
+         let isValidMove = true;
+        
+         // Verifica limites laterais (Z)
+         if (proposedZ < -boundaryLimit || proposedZ > boundaryLimit) {
+            isValidMove = false;
+         }
+
+         // Verifica colisão com árvores
+         if (isValidMove && checkCollisionWithTrees(proposedX, proposedZ)) {
+            isValidMove = false;
+         }
+
+         // Se o movimento for válido, INICIA O PULO
+         if (isValidMove) {
+            player.startX = player.x;
+            player.startZ = player.z;
+            player.targetX = proposedX;
+            player.targetZ = proposedZ;
+            player.rotationY = newRotation;
+            player.isMoving = true;
+            player.moveTime = 0; // Reseta o cronômetro do pulo
+         }
       }
    }
 
@@ -586,6 +602,15 @@ async function main() {
       scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
       rotationY: 90, // Rotação atual
       modelIndex: 5, // Índice no array objFiles (reindeer.obj)
+      // propriedades pro pulo
+      isMoving: false,       // Impede novos movimentos enquanto pula
+      startX: -5,            // Posição inicial do pulo
+      startZ: 0,             // Posição inicial do pulo
+      targetX: -5,           // Destino final
+      targetZ: 0,            // Destino final
+      moveTime: 0,           // Tempo decorrido do pulo atual
+      moveDuration: 0.15,    // Duração do pulo em segundos (ajuste para mais rápido/lento)
+      jumpHeight: 0.5        // Altura do pulo
    };
 
    // --- VARIÁVEIS DO MAPA ---
@@ -642,7 +667,17 @@ async function main() {
       // 2. Resetar posição do jogador
       player.x = -5;
       player.z = 0;
+      player.y = 0; // Pra ele não reiniciar pulando no ar
       player.rotationY = 90;
+
+      // --- CORREÇÃO DO BUG ---
+      // Reseta as variáveis de movimento para cancelar qualquer pulo pendente
+      player.isMoving = false;
+      player.targetX = player.x;
+      player.targetZ = player.z;
+      player.startX = player.x;
+      player.startZ = player.z;
+      player.moveTime = 0;
 
       // 3. Resetar câmera
       cameraX = -12.0;
@@ -1256,6 +1291,8 @@ async function main() {
       const dt = (time - lastTime) / 1000.0; // segundos
       lastTime = time;
 
+      updatePlayerJump(player, dt);
+
       // --- LÓGICA DE PONTUAÇÃO ---
 
       // 1. Verifica se a posição atual é maior que a máxima alcançada
@@ -1465,6 +1502,43 @@ function radToDeg(r) {
 
 function degToRad(d) {
    return (d * Math.PI) / 180;
+}
+
+// Função de interpolação linear simples
+function lerp(start, end, t) {
+   return start * (1 - t) + end * t;
+}
+
+function updatePlayerJump(player, dt) {
+   if (!player.isMoving) return;
+
+   // Incrementa o tempo
+   player.moveTime += dt;
+
+   // Calcula o progresso (0.0 a 1.0)
+   let t = player.moveTime / player.moveDuration;
+
+   if (t >= 1.0) {
+      // Pulo terminou: crava os valores finais
+      t = 1.0;
+      player.isMoving = false;
+      player.y = 0; // Garante que volta para o chão
+      player.x = player.targetX;
+      player.z = player.targetZ;
+   } else {
+      // Durante o pulo
+        
+      // Movimento Linear no X e Z
+      player.x = lerp(player.startX, player.targetX, t);
+      player.z = lerp(player.startZ, player.targetZ, t);
+
+      // Movimento Curvo no Y (Pulo)
+      // Math.sin(t * Math.PI) cria um arco que vai de 0 -> 1 -> 0 quando t vai de 0 -> 1
+      player.y = Math.sin(t * Math.PI) * player.jumpHeight;
+        
+      // Opcional: Efeito de "esmagar e esticar" (squash & stretch) na escala
+      // player.scale = 0.55 + Math.sin(t * Math.PI) * 0.1; 
+   }
 }
 
 window.addEventListener("load", main);
