@@ -1,12 +1,11 @@
-// --- Vertex Shader: Agora passa a Posição no Mundo (World Position) ---
 const vertexShaderSource = `
     attribute vec3 a_position;
     attribute vec3 a_normal;
     attribute vec2 a_texcoord;
     
     varying vec3 v_normal;
-    varying vec3 v_surfacePosition; 
-    varying vec3 v_viewPosition;    // Posição da câmera
+    varying vec3 v_surfacePosition;
+    varying vec3 v_viewPosition;
     varying vec2 v_texcoord;
     
     uniform mat4 u_modelMatrix;
@@ -27,7 +26,7 @@ const vertexShaderSource = `
     }
 `;
 
-// --- Fragment Shader: Suporte a Múltiplos Spotlights (Faróis) ---
+// --- Fragment Shader: Cores Ajustadas para Noite ---
 const fragmentShaderSource = `
     precision mediump float;
     
@@ -35,16 +34,15 @@ const fragmentShaderSource = `
     uniform sampler2D u_texture;
     uniform bool u_useTexture;
 
-    // Luz Global (Sol)
+    // Luz Global
     uniform vec3 u_lightPosition; 
 
     // Múltiplos Faróis (Spotlights)
-    // AUMENTADO DE 4 PARA 12 (Permite 6 carros iluminados)
     #define MAX_SPOTLIGHTS 12
     uniform vec3 u_spotLightPos[MAX_SPOTLIGHTS];
     uniform vec3 u_spotLightDir[MAX_SPOTLIGHTS];
     uniform vec3 u_spotLightColor[MAX_SPOTLIGHTS];
-    uniform float u_spotLightCutoff; // Ângulo do cone
+    uniform float u_spotLightCutoff; 
 
     varying vec3 v_normal;
     varying vec3 v_surfacePosition;
@@ -56,42 +54,45 @@ const fragmentShaderSource = `
       vec3 normal = normalize(v_normal);
       vec3 viewDir = normalize(v_viewPosition - v_surfacePosition);
 
-      // --- 1. LUZ AMBIENTE (Base) ---
-      vec3 ambient = 0.1 * baseColor; 
+      // --- 1. LUZ AMBIENTE (Azulada e Escura) ---
+      // Antes: 0.3 * baseColor (Cinza)
+      // Agora: Tom azul escuro para simular noite
+      vec3 ambientColor = vec3(0.1, 0.15, 0.35); 
+      vec3 ambient = ambientColor * baseColor; 
 
-      // --- 2. LUZ DIRECIONAL (Sol) ---
+      // --- 2. LUZ DIRECIONAL (Luar) ---
       vec3 sunDir = normalize(u_lightPosition - v_surfacePosition);
       float sunDiff = max(dot(normal, sunDir), 0.0);
-      vec3 diffuse = sunDiff * baseColor * 0.6; // 0.6 = Intensidade do sol
+      
+      // Reduzi a intensidade de 0.6 para 0.2 para escurecer o cenário
+      vec3 diffuse = sunDiff * baseColor * 0.2; 
 
-      // Especular do Sol
+      // Especular (Brilho suave na 'lua')
       vec3 halfVector = normalize(sunDir + viewDir);
       float sunSpec = pow(max(dot(normal, halfVector), 0.0), 50.0);
-      vec3 specular = vec3(0.1) * sunSpec; // Brilho suave
+      vec3 specular = vec3(0.2) * sunSpec; 
 
       // --- 3. SPOTLIGHTS (Faróis) ---
       vec3 spotLightEffect = vec3(0.0);
 
       for(int i = 0; i < MAX_SPOTLIGHTS; i++) {
-          // Se a cor for preta, a luz está desligada (pula cálculo)
           if(length(u_spotLightColor[i]) < 0.01) continue;
 
           vec3 lightDir = normalize(u_spotLightPos[i] - v_surfacePosition);
           
-          // Cálculo do Cone (Spotlight)
           float theta = dot(lightDir, normalize(-u_spotLightDir[i]));
           
           if(theta > u_spotLightCutoff) {
-              // Distância para atenuação
               float distance = length(u_spotLightPos[i] - v_surfacePosition);
-              float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
+              // Atenuação ajustada para a luz ir um pouco mais longe
+              float attenuation = 1.0 / (1.0 + 0.05 * distance + 0.01 * (distance * distance));
               
-              // Suavização da borda
               float epsilon = 0.1;
               float intensity = smoothstep(u_spotLightCutoff, u_spotLightCutoff + epsilon, theta);
               
-              // Diffuse do Farol
               float diff = max(dot(normal, lightDir), 0.0);
+              
+              // Multiplicador 2.5 aumenta a força do farol para contrastar com o escuro
               spotLightEffect += u_spotLightColor[i] * diff * attenuation * intensity * 2.0; 
           }
       }
@@ -474,19 +475,13 @@ async function main() {
             ortho_far
          );
       } else {
-         // Perspectiva: A janela (xw_min/max) é definida NO PLANO NEAR.
-         // Valores pequenos aqui dão um FOV maior (grande angular).
-         let width = 1.0;
-         let height = width / aspect;
+         // --- MUDANÇA AQUI ---
+         // Usamos a função 'perspective' que está no final do seu arquivo.
+         // 45 a 60 graus é o padrão da indústria para jogos em 3ª pessoa.
+         const fov = degToRad(45);
 
-         projectionMatrix = m4.setPerspectiveProjectionMatrix(
-            -width / 2,
-            width / 2,
-            -height / 2,
-            height / 2,
-            persp_near,
-            persp_far
-         );
+         // O near deve ser > 0 (1.0 é seguro) e far ajustado para ver o horizonte
+         projectionMatrix = perspective(fov, aspect, 1.0, 200.0);
       }
    }
 
@@ -531,7 +526,7 @@ async function main() {
 
          // --- TROCA DE CÂMERA (Tecla C) ---
          case "c":
-            cameraMode = (cameraMode + 1) % 2;
+            cameraMode = (cameraMode + 1) % 3;
             console.log("Câmera:", cameraMode);
             break;
 
@@ -596,7 +591,7 @@ async function main() {
    // --- VARIÁVEIS DO MAPA ---
    const terrainRows = []; // Lista que guarda as linhas ativas (rua ou grama)
    const ROW_DEPTH = 1.0; // Profundidade de cada linha (igual ao 'step' do player)
-   const TERRAIN_WIDTH = 31; // Quantos blocos de largura (ímpar para centralizar em 0)
+   const TERRAIN_WIDTH = 51; // Quantos blocos de largura (ímpar para centralizar em 0)
    //talvez mudar para 51 resolva a cãmera perspectiva
 
    const DRAW_DISTANCE = 40; // Quantas linhas desenhar à frente/atrás
@@ -1175,7 +1170,7 @@ async function main() {
       // 2. Encontrar os carros mais próximos do jogador
       // Filtra carros que estão na tela (perto da câmera) e ordena por distância
       const visibleCars = cars
-         .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 60)
+         .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 100)
          .sort((a, b) => {
             const distA = Math.sqrt(
                Math.pow(a.x - player.x, 2) + Math.pow(a.z - player.z, 2)
@@ -1210,7 +1205,7 @@ async function main() {
          const lightDir = [0.0, -0.2, dirZ]; // Levemente para baixo e para frente Z
 
          // Cor do Farol (Amarelo claro)
-         const lightColor = [1.0, 0.9, 0.6];
+         const lightColor = [1.0, 0.8, 0.1];
 
          if (lightIndex < MAX_SPOTLIGHTS) {
             gl.uniform3fv(
@@ -1321,23 +1316,42 @@ async function main() {
       ];
 
       if (projectionMode === "perspective") {
-         // Câmera mais alta e mais afastada para trás, mas com zoom (definido no updateProjection)
-         // Isso cria um efeito "Cinemático" estilo jogo de console
+         // Configuração Estilo Crossy Road
+         // A câmera mantém uma distância fixa RELATIVA ao alvo (targetX)
+
+         const distanceBack = 18.0; // O quão atrás (-X) a câmera está
+         const heightUp = 22.0; // O quão alto (+Y) a câmera está
+
          P0 = [
-            targetX - 25.0, // Bem mais para trás
-            targetY + 20.0, // Bem alto
-            targetZ + 0.0,
+            targetX - distanceBack,
+            targetY + heightUp,
+            targetZ, // Mantém o Z alinhado com o centro (ou player.z se quiser que a câmera siga lateralmente)
          ];
+
+         Pref = [targetX + 2.0, 0.0, 0.0];
+
+         // DICA: Para Crossy Road clássico, o targetZ em 'P0' deve ser fixo em 0.0
+         // para que a câmera não balance para esquerda/direita quando a rena anda de lado.
+         // Se quiser que siga a rena de lado, use 'targetZ'.
+         // Sugestão para começar: fixe em 0.0 ou use um lerp suave.
+         P0[2] = 0.0;
       } else {
+         Pref = [targetX, targetY, targetZ];
          // --- MODO ORTOGRÁFICO (Mantém sua lógica de Câmeras C) ---
          switch (cameraMode) {
             case 0: // PADRÃO (Isométrica)
-               P0 = [targetX - 10.0, targetY + 15.0, targetZ + 1.0];
+               P0 = [targetX - 10.0, targetY + 15.0, targetZ + 2.5];
+               V = [0.0, 1.0, 0.0];
                break;
             case 1: // TOP-DOWN
-               P0 = [targetX - 0.1, targetY + 30.0, targetZ];
+               P0 = [targetX - 30, targetY + 30.0, targetZ];
                // Ajuste o vetor UP para não dar problema no top-down estrito
-               if (cameraMode === 1) V = [1.0, 0.0, 0.0];
+               V = [1.0, 0.0, 0.0];
+               break;
+            case 2:
+               P0 = [targetX, targetY + 30.0, targetZ];
+               // Ajuste o vetor UP para não dar problema no top-down estrito
+               V = [1.0, 0.0, 0.0];
                break;
          }
       }
@@ -1454,3 +1468,27 @@ function degToRad(d) {
 }
 
 window.addEventListener("load", main);
+
+function perspective(fovRad, aspect, near, far) {
+   const f = 1.0 / Math.tan(fovRad / 2);
+   const rangeInv = 1 / (near - far);
+
+   return [
+      f / aspect,
+      0,
+      0,
+      0,
+      0,
+      f,
+      0,
+      0,
+      0,
+      0,
+      (near + far) * rangeInv,
+      -1,
+      0,
+      0,
+      near * far * rangeInv * 2,
+      0,
+   ];
+}
