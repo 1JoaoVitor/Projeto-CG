@@ -26,7 +26,7 @@ const vertexShaderSource = `
     }
 `;
 
-// --- Fragment Shader: Cores Ajustadas para Noite ---
+
 const fragmentShaderSource = `
     precision mediump float;
     
@@ -34,10 +34,10 @@ const fragmentShaderSource = `
     uniform sampler2D u_texture;
     uniform bool u_useTexture;
 
-    // Luz Global
+    // luz global
     uniform vec3 u_lightPosition; 
 
-    // Múltiplos Faróis (Spotlights)
+    // faróis
     #define MAX_SPOTLIGHTS 12
     uniform vec3 u_spotLightPos[MAX_SPOTLIGHTS];
     uniform vec3 u_spotLightDir[MAX_SPOTLIGHTS];
@@ -54,25 +54,19 @@ const fragmentShaderSource = `
       vec3 normal = normalize(v_normal);
       vec3 viewDir = normalize(v_viewPosition - v_surfacePosition);
 
-      // --- 1. LUZ AMBIENTE (Azulada e Escura) ---
-      // Antes: 0.3 * baseColor (Cinza)
-      // Agora: Tom azul escuro para simular noite
+      // luz ambiente de noite
       vec3 ambientColor = vec3(0.1, 0.15, 0.35); 
       vec3 ambient = ambientColor * baseColor; 
 
-      // --- 2. LUZ DIRECIONAL (Luar) ---
       vec3 sunDir = normalize(u_lightPosition - v_surfacePosition);
       float sunDiff = max(dot(normal, sunDir), 0.0);
       
-      // Reduzi a intensidade de 0.6 para 0.2 para escurecer o cenário
       vec3 diffuse = sunDiff * baseColor * 0.2; 
 
-      // Especular (Brilho suave na 'lua')
       vec3 halfVector = normalize(sunDir + viewDir);
       float sunSpec = pow(max(dot(normal, halfVector), 0.0), 50.0);
       vec3 specular = vec3(0.2) * sunSpec; 
 
-      // --- 3. SPOTLIGHTS (Faróis) ---
       vec3 spotLightEffect = vec3(0.0);
 
       for(int i = 0; i < MAX_SPOTLIGHTS; i++) {
@@ -84,7 +78,6 @@ const fragmentShaderSource = `
           
           if(theta > u_spotLightCutoff) {
               float distance = length(u_spotLightPos[i] - v_surfacePosition);
-              // Atenuação ajustada para a luz ir um pouco mais longe
               float attenuation = 1.0 / (1.0 + 0.05 * distance + 0.01 * (distance * distance));
               
               float epsilon = 0.1;
@@ -92,7 +85,6 @@ const fragmentShaderSource = `
               
               float diff = max(dot(normal, lightDir), 0.0);
               
-              // Multiplicador 2.5 aumenta a força do farol para contrastar com o escuro
               spotLightEffect += u_spotLightColor[i] * diff * attenuation * intensity * 2.0; 
           }
       }
@@ -101,7 +93,7 @@ const fragmentShaderSource = `
     }
 `;
 
-// A versão original do m4.js estava invertendo os eixos e causando tela preta.
+// a versão da professora do m4.js estava invertendo os eixos e causando tela preta
 if (typeof m4 !== "undefined") {
    m4.setPerspectiveProjectionMatrix = function (
       xw_min,
@@ -176,12 +168,7 @@ async function loadOBJFromFile(filePath) {
    }
 }
 
-function loadOBJFromTag(tagId) {
-   const objText = document.getElementById(tagId).textContent;
-   return parseOBJ(objText);
-}
 
-// Simple OBJ parser (vertex + normal + face)
 function parseOBJ(text) {
    const positions = [];
    const normals = [];
@@ -202,14 +189,13 @@ function parseOBJ(text) {
       const args = parts.slice(1);
 
       if (keyword === "v") {
-         // Pega apenas os 3 primeiros valores (x, y, z), ignorando cores extras
          tempVertices.push([
             parseFloat(args[0]),
             parseFloat(args[1]),
             parseFloat(args[2]),
          ]);
       } else if (keyword === "vt") {
-         // Inverter Y porque OBJ usa origem inferior-esquerda e WebGL usa superior-esquerda
+         // inverte Y porque OBJ usa origem inferior-esquerda e WebGL usa superior-esquerda
          tempTexcoords.push([parseFloat(args[0]), 1.0 - parseFloat(args[1])]);
       } else if (keyword === "vn") {
          tempNormals.push([
@@ -219,7 +205,6 @@ function parseOBJ(text) {
          ]);
       } else if (keyword === "f") {
          const faceVerts = args.map((f) => {
-            // Supports v, v/vt, v//vn and v/vt/vn
             const parts = f.split("/");
             const v = parseInt(parts[0]) - 1;
             const vt =
@@ -270,7 +255,6 @@ function normalizeModel(objData) {
    let minZ = Infinity,
       maxZ = -Infinity;
 
-   // 1. Encontra os limites (Bounding Box)
    for (let i = 0; i < objData.positions.length; i += 3) {
       const x = objData.positions[i];
       const y = objData.positions[i + 1];
@@ -284,15 +268,14 @@ function normalizeModel(objData) {
       if (z > maxZ) maxZ = z;
    }
 
-   // Se o modelo estiver vazio ou corrompido, evita NaNs
    if (minX === Infinity) return;
 
-   // 2. Calcula o centro
+   // calcula o centro
    const centerX = (minX + maxX) / 2;
-   const centerY = minY; // Pés no chão (Y=0)
+   const centerY = minY;
    const centerZ = (minZ + maxZ) / 2;
 
-   // 3. Centraliza os vértices
+   // centraliza os vertices
    for (let i = 0; i < objData.positions.length; i += 3) {
       objData.positions[i] -= centerX;
       objData.positions[i + 1] -= centerY;
@@ -322,11 +305,6 @@ async function main() {
    const normalLocation = gl.getAttribLocation(program, "a_normal");
    const texcoordLocation = gl.getAttribLocation(program, "a_texcoord");
 
-   const VertexBuffer = gl.createBuffer();
-   const NormalBuffer = gl.createBuffer();
-   const TexcoordBuffer = gl.createBuffer();
-   const IndexBuffer = gl.createBuffer();
-
    const colorUniformLocation = gl.getUniformLocation(program, "u_color");
    const textureUniformLocation = gl.getUniformLocation(program, "u_texture");
    const useTextureUniformLocation = gl.getUniformLocation(
@@ -351,7 +329,6 @@ async function main() {
       `u_inverseTransposeModelMatrix`
    );
 
-   // Uniforms de Iluminação
    const lightPositionUniformLocation = gl.getUniformLocation(
       program,
       "u_lightPosition"
@@ -361,7 +338,6 @@ async function main() {
       "u_viewPosition"
    );
 
-   // --- UNIFORMS PARA SPOTLIGHTS (Faróis) ---
    const MAX_SPOTLIGHTS = 12;
    const spotLightPosLocs = [];
    const spotLightDirLocs = [];
@@ -383,24 +359,11 @@ async function main() {
       );
    }
 
-   // Define o ângulo do farol (cos(30 graus) = ~0.86)
    gl.uniform1f(spotLightCutoffLoc, 0.9); // Quanto mais perto de 1, mais fechado o foco
 
    gl.enable(gl.DEPTH_TEST);
    gl.clearColor(0.0, 0.0, 0.0, 1.0);
    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-   let modelViewMatrix = [];
-   let inverseTransposeModelViewMatrix = [];
-
-   // CONFIGURAÇÃO INICIAL DA CÂMERA
-   // P0: Posição do olho (Câmera)
-   // Pref: Ponto de referência (Para onde olha)
-   // V: Vetor "Up" (Cabeça para cima)
-
-   // Agora Y é CIMA. X é FRENTE.
-   // Começamos olhando para o início (X=0, Z=0).
-   // Câmera posicionada atrás (-X) e acima (+Y).
 
    let P0 = [-20.0, 30.0, 0.0];
    let Pref = [10.0, 0.0, 0.0];
@@ -443,26 +406,16 @@ async function main() {
    let rotateY = 0;
    let rotateZ = 0;
 
-   // --- ESTADOS DE CÂMERA E PROJEÇÃO ---
    let projectionMode = "ortho"; // 'ortho' ou 'perspective'
-   let cameraMode = 0; // 0: Padrão, 1: Topo
+   let cameraMode = 0; // 0: Padrão, 1: 3° Pessoa, 2: Topo
 
-   // Configurações para Perspectiva (Field of View simulado)
-   // Precisamos de planos 'near' positivos para perspectiva funcionar matematicamente bem
-   const persp_near = 1.0;
-   const persp_far = 200.0;
-
-   // Configurações para Ortográfica (Zoom ajustado)
-   // O z_near/far aqui funciona diferente, é uma "caixa" de recorte
    const ortho_near = 100.0;
    const ortho_far = -500.0;
 
-   // Função para atualizar a matriz de projeção baseada no estado atual
    function updateProjection() {
       const aspect = gl.canvas.width / gl.canvas.height;
 
       if (projectionMode === "ortho") {
-         // Mantemos o zoom que definimos antes (-4 a 4)
          let width = 8.0;
          let height = width / aspect;
 
@@ -475,26 +428,20 @@ async function main() {
             ortho_far
          );
       } else {
-         // --- MUDANÇA AQUI ---
-         // Usamos a função 'perspective' que está no final do seu arquivo.
-         // 45 a 60 graus é o padrão da indústria para jogos em 3ª pessoa.
          const fov = degToRad(45);
 
-         // O near deve ser > 0 (1.0 é seguro) e far ajustado para ver o horizonte
          projectionMatrix = perspective(fov, aspect, 1.0, 200.0);
       }
    }
 
-   // Chama uma vez para iniciar
    updateProjection();
 
    const bodyElement = document.querySelector("body");
    bodyElement.addEventListener("keydown", keyDown, false);
 
-   const step = 1.0; // Tamanho do passo da rena
+   const step = 1.0; // tamanho do passo do personagem
 
    function keyDown(event) {
-      // Não previne o default se for F5/F12, mas para jogo previne scroll
       if (event.repeat) return;
 
       const boundaryLimit = Math.floor(TERRAIN_WIDTH / 4) + 1;
@@ -515,25 +462,23 @@ async function main() {
       let newRotation = player.rotationY;
       let moved = false;
 
-      switch (
-         event.key.toLowerCase() // toLowerCase permite usar 'W' ou 'w'
-      ) {
-         // Controles da Câmera (Existentes)
+      switch (event.key.toLowerCase()) {
+         // tipos da câmera
          case "1":
             projectionMode = "ortho";
             updateProjection();
-            console.log("Modo: Ortográfico");
+            // console.log("Modo: Ortográfico");
             break;
          case "2":
             projectionMode = "perspective";
             updateProjection();
-            console.log("Modo: Perspectiva");
+            // console.log("Modo: Perspectiva");
             break;
 
-         // --- TROCA DE CÂMERA (Tecla C) ---
+         // troca de câmera
          case "c":
             cameraMode = (cameraMode + 1) % 3;
-            console.log("Câmera:", cameraMode);
+            // console.log("Câmera:", cameraMode);
             break;
 
          case "w":
@@ -559,11 +504,9 @@ async function main() {
       }
 
       if (moved) {
-         // Verifica colisões antes de iniciar o movimento
-         // Para 'a' e 'd' precisamos verificar os limites do mapa também
          let isValidMove = true;
         
-         // Verifica limites laterais (Z)
+         // Verifica limites laterais no eixo Z
          if (proposedZ < -boundaryLimit || proposedZ > boundaryLimit) {
             isValidMove = false;
          }
@@ -573,7 +516,6 @@ async function main() {
             isValidMove = false;
          }
 
-         // Se o movimento for válido, INICIA O PULO
          if (isValidMove) {
             player.startX = player.x;
             player.startZ = player.z;
@@ -581,7 +523,7 @@ async function main() {
             player.targetZ = proposedZ;
             player.rotationY = newRotation;
             player.isMoving = true;
-            player.moveTime = 0; // Reseta o cronômetro do pulo
+            player.moveTime = 0;
          }
       }
    }
@@ -590,7 +532,6 @@ async function main() {
    let theta_y = 0.0;
    let theta_z = 0.0;
 
-   // Array de carros em diferentes pistas/ruas (tipo Crossy Road)
    let cars = [];
 
    let trees = [];
@@ -599,33 +540,33 @@ async function main() {
       x: -5,
       y: 0,
       z: 0,
-      scale: 0.55, // Escala (ajuste se a rena ficar muito grande ou pequena)
-      rotationY: 90, // Rotação atual
-      modelIndex: 5, // Índice no array objFiles (reindeer.obj)
+      scale: 0.55,
+      rotationY: 90,
+      modelIndex: 5, // Índice no array objFiles (snowman.obj)
       // propriedades pro pulo
-      isMoving: false,       // Impede novos movimentos enquanto pula
-      startX: -5,            // Posição inicial do pulo
-      startZ: 0,             // Posição inicial do pulo
-      targetX: -5,           // Destino final
-      targetZ: 0,            // Destino final
-      moveTime: 0,           // Tempo decorrido do pulo atual
-      moveDuration: 0.15,    // Duração do pulo em segundos (ajuste para mais rápido/lento)
-      jumpHeight: 0.5        // Altura do pulo
+      isMoving: false, // Impede novos movimentos enquanto pula
+      startX: -5,
+      startZ: 0,
+      targetX: -5,
+      targetZ: 0,
+      moveTime: 0, // Tempo decorrido do pulo atual
+      moveDuration: 0.15,
+      jumpHeight: 0.5
    };
 
-   // --- VARIÁVEIS DO MAPA ---
-   const terrainRows = []; // Lista que guarda as linhas ativas (rua ou grama)
-   const ROW_DEPTH = 1.0; // Profundidade de cada linha (igual ao 'step' do player)
+   // MAPA
+   const terrainRows = []; // Lista de rua ou grama
+   const ROW_DEPTH = 1.0;
    const TERRAIN_WIDTH = 51; // Quantos blocos de largura (ímpar para centralizar em 0)
    //talvez mudar para 51 resolva a cãmera perspectiva
 
    const DRAW_DISTANCE = 40; // Quantas linhas desenhar à frente/atrás
 
-   // Índices dos modelos no array 'models' (ajuste se a ordem mudar)
+   // Índices dos modelos no array 'models'
    const MODEL_GRASS = 6;
    const MODEL_ROAD = 7;
 
-   //função de colisão com as ávrores
+   // função de colisão com as ávrores
    function checkCollisionWithTrees(newX, newZ) {
       const COLLISION_SIZE = 0.5; // Meio "bloco" para cada lado
 
@@ -638,7 +579,7 @@ async function main() {
    }
 
    function checkCollisionWithCars(newX, newZ) {
-      const COLLISION_SIZE = 0.7; // Meio "bloco" para cada lado
+      const COLLISION_SIZE = 0.7;
 
       return cars.some((car) => {
          return (
@@ -652,26 +593,21 @@ async function main() {
       isPaused = true;
       isGameOver = true;
 
-      // Atualiza a pontuação no modal
       finalScoreElement.textContent = scoreElement.textContent;
 
-      // Mostra o modal
       gameOverModal.classList.remove("hidden");
    }
 
    function restartGame() {
-      // 1. Resetar flags
+      // resets
       isPaused = false;
       isGameOver = false;
-
-      // 2. Resetar posição do jogador
-      player.x = -5;
+      
+      player.x = -5; // Posição do x hardcoded
       player.z = 0;
       player.y = 0; // Pra ele não reiniciar pulando no ar
       player.rotationY = 90;
 
-      // --- CORREÇÃO DO BUG ---
-      // Reseta as variáveis de movimento para cancelar qualquer pulo pendente
       player.isMoving = false;
       player.targetX = player.x;
       player.targetZ = player.z;
@@ -679,44 +615,39 @@ async function main() {
       player.startZ = player.z;
       player.moveTime = 0;
 
-      // 3. Resetar câmera
+      // Reseta a câmera
       cameraX = -12.0;
 
-      // 4. Resetar pontuação
+      // Reseta a pontuação
       maxDistanceX = initialX;
       scoreElement.textContent = "0";
 
-      // 5. Limpar arrays
+      // Limpa arrays
       trees = [];
       cars = [];
       terrainRows.length = 0;
 
-      // 6. Reinicializar terreno
+      // Reinicializar terreno
       initTerrain(-12);
 
-      // 7. Esconder o modal
       gameOverModal.classList.add("hidden");
 
-      // 8. Resetar tempo
       lastTime = null;
    }
 
-   // Função que cria uma nova linha lógica
+   // Função que cria uma nova linha de terreno
    function createRow(xPosition) {
-      // Lógica simples: aleatório, mas garantindo que o início (onde o player nasce) seja seguro
       let type = "grass";
       let roadDirection = null; // -1 (esquerda) ou 1 (direita)
       let roadSpeed = null;
 
-      // Se estiver longe do início, chance de ser rua
-      // (Ajuste a lógica aqui para criar padrões mais complexos)
       if (xPosition > -5 && Math.random() < 0.4) {
          type = "road";
       }
 
       if (type === "road") {
          roadDirection = Math.random() < 0.5 ? -1 : 1;
-         roadSpeed = 3 + Math.random() * 7; // Velocidade aleatória 3-10
+         roadSpeed = 3 + Math.random() * 5;
       }
 
       return {
@@ -734,15 +665,14 @@ async function main() {
 
       const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
 
-      // Para cada posição Z (largura), chance de spawnar árvore
+      // pra cada posição Z, chance de spawnar árvore
       for (let zOffset = -halfWidth; zOffset <= halfWidth; zOffset++) {
-         // Se estiver muito perto de (-5, 0), não cria árvore.
+         // Se estiver muito perto do jogador (-5, 0), não cria árvore.
          if (Math.abs(row.x - -5) < 3.0 && Math.abs(zOffset * 1.0) < 3.0) {
             continue;
          }
 
          if (Math.random() < 0.15) {
-            // 15% de chance por tile
             // Randomiza entre as 5 árvores (índices 8-12)
             const randomTreeIndex = 8 + Math.floor(Math.random() * 5);
 
@@ -750,7 +680,7 @@ async function main() {
                x: row.x,
                y: 0,
                z: zOffset * 1.0,
-               scale: 0.8, // Ajuste o tamanho
+               scale: 0.8,
                modelIndex: randomTreeIndex,
             });
          }
@@ -764,13 +694,12 @@ async function main() {
       const MIN_DISTANCE = 3.0; // Distância mínima entre carros
 
       // Tenta spawnar alguns carros (2-4 por rua)
-      const numCars = Math.floor(Math.random() * 3) + 2;
+      const numCars = Math.floor(Math.random() * 2) + 2;
 
       for (let i = 0; i < numCars; i++) {
-         // Posição Z aleatória
          const randomZ = Math.random() * (halfWidth * 2) - halfWidth;
 
-         // VERIFICAÇÃO DE COLISÃO: Checa se já existe carro próximo
+         // Checa se já existe carro próximo
          const tooClose = cars.some((car) => {
             return car.x === row.x && Math.abs(car.z - randomZ) < MIN_DISTANCE;
          });
@@ -794,7 +723,7 @@ async function main() {
       }
    }
 
-   // Função para inicializar o mapa ao redor do jogador
+   // inicializa o mapa
    function initTerrain(startX) {
       for (let i = -10; i < DRAW_DISTANCE; i++) {
          const x = startX + i * ROW_DEPTH;
@@ -807,23 +736,21 @@ async function main() {
 
    // Função chamada a cada frame para criar chão novo e remover o velho
    function updateTerrain(currentCameraX) {
-      // 1. Remover linhas que ficaram muito para trás
-      // Limite inferior (atrás da câmera)
+      // Remove linhas que ficaram muito para trás
       const removeThreshold = currentCameraX - 15.0;
 
       while (terrainRows.length > 0 && terrainRows[0].x < removeThreshold) {
-         terrainRows.shift(); // Remove a primeira linha (mais antiga)
+         terrainRows.shift();
       }
 
       // removendo arvores e carros fora da camera
       trees = trees.filter((tree) => tree.x >= removeThreshold);
       cars = cars.filter((car) => car.x >= removeThreshold);
-      // 2. Adicionar linhas novas à frente
+      // Adicionar linhas novas à frente
       // Pega a posição Y da última linha gerada
       let lastX =
          terrainRows.length > 0 ? terrainRows[terrainRows.length - 1].x : 0;
 
-      // Limite superior (à frente da câmera)
       const addThreshold = currentCameraX + DRAW_DISTANCE;
 
       while (lastX < addThreshold) {
@@ -836,10 +763,6 @@ async function main() {
    }
 
    // Função de renderização específica para o terreno
-
-   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE =====
-   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO EM LOTE (CORRIGIDA) =====
-   // ===== OTIMIZAÇÃO 3: RENDERIZAÇÃO DE TERRENO COM TEXTURA =====
    function drawTerrain() {
       const halfWidth = Math.floor(TERRAIN_WIDTH / 2);
 
@@ -852,7 +775,7 @@ async function main() {
                x: row.x,
                y: -0.01,
                z: zOffset * 1.0,
-               scale: 1.0, // Se precisar ajustar o tamanho do tile, mude aqui
+               scale: 1.0,
             };
 
             if (row.modelIndex === MODEL_GRASS) {
@@ -863,13 +786,12 @@ async function main() {
          }
       }
 
-      // Função auxiliar para desenhar um lote (Batch) com Textura
+      // Função auxiliar para desenhar um lote (Batch)
       function drawBatch(modelIndex, tiles) {
          if (tiles.length === 0) return;
 
          const buffers = modelBuffers[modelIndex % models.length];
 
-         // 1. Liga geometria
          gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
          gl.enableVertexAttribArray(positionLocation);
          gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
@@ -884,22 +806,18 @@ async function main() {
 
          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
 
-         // 2. CONFIGURAÇÃO DE TEXTURA (A Mudança Principal)
-         // Define a cor como BRANCO para não alterar as cores originais da imagem
          gl.uniform3fv(colorUniformLocation, new Float32Array([1.0, 1.0, 1.0]));
 
-         // Ativa a textura
+
          gl.activeTexture(gl.TEXTURE0);
-         gl.bindTexture(gl.TEXTURE_2D, texture); // Usa a textura global carregada
+         gl.bindTexture(gl.TEXTURE_2D, texture);
          gl.uniform1i(textureUniformLocation, 0);
 
-         // Diz ao shader: "Sim, use a textura!"
          gl.uniform1i(useTextureUniformLocation, 1);
 
-         // 3. Loop de Desenho
+         // Loop de draw
          for (const tile of tiles) {
             let modelViewMatrix = m4.identity();
-            // modelViewMatrix = m4.scale(modelViewMatrix, tile.scale, tile.scale, tile.scale);
             modelViewMatrix = m4.translate(
                modelViewMatrix,
                tile.x,
@@ -936,14 +854,12 @@ async function main() {
          }
       }
 
-      // Agora chamamos o batch sem precisar passar cores manuais
       drawBatch(MODEL_GRASS, grassTiles);
       drawBatch(MODEL_ROAD, roadTiles);
    }
 
    let lastTime = null;
 
-   // Função para carregar textura
    function loadTexture(gl, url) {
       const texture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -986,11 +902,11 @@ async function main() {
       return texture;
    }
 
-   // Carregar textura (se tiver)
-   const texture = loadTexture(gl, "../OBJ/Textures/holiday_colormap.png");
-   let useTexture = true; // Ativa textura para todos os modelos
 
-   // Lista de arquivos OBJ para carregar
+   const texture = loadTexture(gl, "../OBJ/Textures/holiday_colormap.png");
+   let useTexture = true;
+
+
    const objFiles = [
       "../OBJ/car1.obj",
       "../OBJ/car2.obj",
@@ -1007,7 +923,6 @@ async function main() {
       "../OBJ/tree5.obj",
    ];
 
-   // Carrega todos os modelos OBJ
    const models = [];
    for (const file of objFiles) {
       try {
@@ -1044,17 +959,15 @@ async function main() {
             center: { x: cx, y: cy, z: cz },
          });
       } catch (error) {
-         console.warn(`N\u00e3o foi poss\u00edvel carregar ${file}:`, error);
+         console.warn("Não foi possível carregar ${file}:", error);
       }
    }
-
+   
    if (models.length === 0) {
       console.error("Nenhum modelo foi carregado!");
       return;
    }
 
-   // ===== OTIMIZAÇÃO 1: BUFFERS PERMANENTES =====
-   // Criar buffers WebGL permanentes para cada modelo
    const modelBuffers = models.map((model) => {
       const vbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -1081,12 +994,10 @@ async function main() {
       };
    });
 
-   // ===== OTIMIZAÇÃO 2: FUNÇÃO DE DESENHO OTIMIZADA =====
    function drawObj(obj) {
       const modelIndex = obj.modelIndex % models.length;
       const buffers = modelBuffers[modelIndex];
 
-      // Bind dos buffers (muito mais rápido que bufferData)
       gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
@@ -1101,7 +1012,6 @@ async function main() {
 
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
 
-      // Cores e texturas
       let objColor = obj.color || [1.0, 1.0, 1.0];
       gl.uniform3fv(colorUniformLocation, new Float32Array(objColor));
 
@@ -1113,7 +1023,6 @@ async function main() {
       gl.uniform1i(textureUniformLocation, 0);
       gl.uniform1i(useTextureUniformLocation, shouldUseTexture ? 1 : 0);
 
-      // Matrizes
       let modelViewMatrix = m4.identity();
       modelViewMatrix = m4.scale(
          modelViewMatrix,
@@ -1160,7 +1069,6 @@ async function main() {
    }
 
    let isPaused = false;
-   let isGameOver = false;
 
    const gameOverModal = document.getElementById("gameOverModal");
    const finalScoreElement = document.getElementById("finalScore");
@@ -1169,9 +1077,8 @@ async function main() {
    const pauseBtn = document.getElementById("pauseBtn");
    pauseBtn.addEventListener("click", () => {
       isPaused = !isPaused;
-      pauseBtn.textContent = isPaused ? "RESUME" : "PAUSE";
+      pauseBtn.textContent = isPaused ? "▶ Continuar" : "⏸ Pausar";
 
-      // Opcional: tirar o foco do botão para que o 'Espaço' não ative o botão novamente
       pauseBtn.blur();
    });
 
@@ -1181,29 +1088,26 @@ async function main() {
 
    // PONTUAÇÃO
    const initialX = -5; // Mesma posição inicial do player definida no objeto player
-   let maxDistanceX = initialX; // Guarda a posição mais longe que a rena já chegou
+   let maxDistanceX = initialX; // Guarda a posição mais longe que o player já chegou
 
    const scoreElement = document.getElementById("score");
 
-   // --- VARIÁVEIS DO AUTO-SCROLL ---
+   // AUTO-SCROLL
    // A câmera começa na mesma posição Y inicial do jogador (-12 atualmente)
    let cameraX = -12.0;
 
-   // Velocidade da câmera (unidades por segundo)
-   // Ajuste este valor: 1.0 é lento, 3.0 é rápido/difícil
+   // Velocidade da câmera
    const scrollSpeed = 0.2;
 
    let frameCount = 0;
 
    // Função para atualizar os faróis dos carros
    function updateHeadlights() {
-      // 1. Resetar todas as luzes para "desligadas" (cor preta)
       for (let i = 0; i < MAX_SPOTLIGHTS; i++) {
          gl.uniform3fv(spotLightColorLocs[i], new Float32Array([0, 0, 0]));
       }
 
-      // 2. Encontrar os carros mais próximos do jogador
-      // Filtra carros que estão na tela (perto da câmera) e ordena por distância
+      // Encontrar os carros mais próximos do jogador
       const visibleCars = cars
          .filter((car) => car.x > cameraX - 10 && car.x < cameraX + 100)
          .sort((a, b) => {
@@ -1216,27 +1120,19 @@ async function main() {
             return distA - distB;
          });
 
-      // 3. Pegar os 2 primeiros carros e ligar os faróis (2 faróis por carro = 4 total)
+
       let lightIndex = 0;
       for (let i = 0; i < Math.min(visibleCars.length, 6); i++) {
          const car = visibleCars[i];
          const dirZ = car.direction; // 1 (direita) ou -1 (esquerda)
 
-         // Farol 1 (Esquerdo)
-         // Ajuste o offset conforme o tamanho do seu modelo de carro
-         const offsetZ1 = 0.3;
-         const offsetX = 0.8; // Farol está na frente do carro
-
          // Posição: Centro do carro + Offset
          // Como o carro anda em Z, a "frente" depende da direção
          const lx1 = car.x;
          const ly1 = car.y + 0.5; // Altura do farol
-         const lz1 = car.z + offsetZ1 * dirZ; // Na frente (Z)
 
-         // Farol 2 (Direito)
-         const lz2 = car.z - offsetZ1 * dirZ;
 
-         // Direção do facho de luz (Aponta para onde o carro vai: Eixo Z)
+         // Direção do facho de luz
          const lightDir = [0.0, -0.2, dirZ]; // Levemente para baixo e para frente Z
 
          // Cor do Farol (Amarelo claro)
@@ -1246,7 +1142,7 @@ async function main() {
             gl.uniform3fv(
                spotLightPosLocs[lightIndex],
                new Float32Array([lx1 + 0.3, ly1, car.z + dirZ * 0.5])
-            ); // Ajuste fino da posição
+            );
             gl.uniform3fv(
                spotLightDirLocs[lightIndex],
                new Float32Array(lightDir)
@@ -1276,15 +1172,11 @@ async function main() {
    }
 
    function drawScene(time) {
-      // --- LÓGICA DE PAUSE ---
       if (isPaused) {
-         // Atualizamos o lastTime para o tempo atual, assim
-         // quando despausar, o 'dt' será pequeno e não haverá salto temporal.
          lastTime = time;
 
-         // Requisita o próximo frame (loop continua rodando, mas sem fazer nada)
          requestAnimationFrame(drawScene);
-         return; // Sai da função aqui, impedindo qualquer movimento
+         return;
       }
 
       if (!lastTime) lastTime = time;
@@ -1293,21 +1185,16 @@ async function main() {
 
       updatePlayerJump(player, dt);
 
-      // --- LÓGICA DE PONTUAÇÃO ---
-
-      // 1. Verifica se a posição atual é maior que a máxima alcançada
+      // PONTUAÇÃO
       if (player.x > maxDistanceX) {
          maxDistanceX = player.x;
 
-         // 2. Calcula os pontos: Distância Percorrida / Tamanho do Passo
-         // Math.floor remove decimais minúsculos de erro de flutuação
          const currentScore = Math.floor((maxDistanceX - initialX) / step);
 
-         // 3. Atualiza o HTML
          scoreElement.textContent = currentScore;
       }
 
-      //proporções do mundo
+      // proporções do mundo
       const worldWidth = 6.0;
       const aspect = gl.canvas.width / gl.canvas.height;
       const worldHeight = worldWidth / aspect;
@@ -1315,21 +1202,13 @@ async function main() {
       cameraX += scrollSpeed * dt;
 
       if (player.x < cameraX + 3.8) {
-         // valor escolhido a dedo, talvez seja necessário trocar
+         // valor hardcoded, talvez seja necessário trocar
          gameOver();
       }
 
-      //Verifica o limite de 1/3 da tela
-      // O centro da tela (TargetY) é "cameraY + lookAhead".
-      // A base da tela é "CenterY - worldHeight/2".
-      // A linha de 1/3 é "Base + worldHeight/3".
-      // Simplificando a matemática: Se o jogador passar dessa linha, ajustamos o cameraY.
-
+      // Verifica o limite de 1/3 da tela
       const lookAhead = 10.0;
 
-      // Essa fórmula garante que o jogador fique na linha de 1/3 visualmente
-      // CenterY = PlayerY + H/6 (H/6 é a diferença entre o meio e o 1/3 inferior)f
-      // Como CenterY = cameraY + lookAhead, isolamos o cameraY:
       const minCameraYForPlayer = player.x + worldHeight / 6.0 - lookAhead;
 
       // Se o scroll automático estiver atrasado em relação ao jogador, puxa a câmera
@@ -1343,71 +1222,53 @@ async function main() {
 
       let Pref = [targetX, targetY, targetZ];
 
-      // 2. Onde a câmera está? (Eye/Position)
-      // Mantemos o deslocamento original (offset) de [0, 30, 30] em relação ao alvo
-      // Isso preserva o ângulo de 45 graus e a distância
       let P0 = [
-         targetX - 10, // Segue lateralmente
-         targetY + 15.0, // Mantém altura/distância Y
+         targetX - 10,
+         targetY + 15.0,
          targetZ + 1.0,
       ];
 
       if (projectionMode === "perspective") {
-         // Configuração Estilo Crossy Road
-         // A câmera mantém uma distância fixa RELATIVA ao alvo (targetX)
-
-         const distanceBack = 18.0; // O quão atrás (-X) a câmera está
-         const heightUp = 22.0; // O quão alto (+Y) a câmera está
+         const distanceBack = 18.0;
+         const heightUp = 22.0;
 
          P0 = [
             targetX - distanceBack,
             targetY + heightUp,
-            targetZ, // Mantém o Z alinhado com o centro (ou player.z se quiser que a câmera siga lateralmente)
+            targetZ,
          ];
 
          Pref = [targetX + 2.0, 0.0, 0.0];
 
-         // DICA: Para Crossy Road clássico, o targetZ em 'P0' deve ser fixo em 0.0
-         // para que a câmera não balance para esquerda/direita quando a rena anda de lado.
-         // Se quiser que siga a rena de lado, use 'targetZ'.
-         // Sugestão para começar: fixe em 0.0 ou use um lerp suave.
          P0[2] = 0.0;
       } else {
          Pref = [targetX, targetY, targetZ];
-         // --- MODO ORTOGRÁFICO (Mantém sua lógica de Câmeras C) ---
+         // ORTOGRÁFICO
          switch (cameraMode) {
             case 0: // PADRÃO (Isométrica)
                P0 = [targetX - 10.0, targetY + 15.0, targetZ + 2.5];
                V = [0.0, 1.0, 0.0];
                break;
-            case 1: // TOP-DOWN
+            case 1: // 3° Pessoa
                P0 = [targetX - 30, targetY + 30.0, targetZ];
-               // Ajuste o vetor UP para não dar problema no top-down estrito
                V = [1.0, 0.0, 0.0];
                break;
-            case 2:
+            case 2: // TOP-DOWN
                P0 = [targetX, targetY + 30.0, targetZ];
-               // Ajuste o vetor UP para não dar problema no top-down estrito
                V = [1.0, 0.0, 0.0];
                break;
          }
       }
 
-      // 3. Recalcula a matriz
-      // Nota: 'V' (vetor up [0,1,0]) deve estar acessível no escopo da main
       let viewingMatrix = m4.setViewingMatrix(P0, Pref, V);
 
-      // 4. Envia para a GPU
       gl.uniformMatrix4fv(viewingMatrixUniformLocation, false, viewingMatrix);
 
-      // Atualiza a posição da câmera para o cálculo de brilho especular (importante!)
       gl.uniform3fv(viewPositionUniformLocation, new Float32Array(P0));
 
-      // (Opcional) Faz a luz acompanhar o jogador para o mundo não ficar escuro lá na frente
       let lightPos = [targetX + 10.0, 50.0, 20.0];
       gl.uniform3fv(lightPositionUniformLocation, new Float32Array(lightPos));
 
-      // ----------------------------------
       updateHeadlights();
 
       // Atualiza posição de todos os carros
@@ -1427,7 +1288,6 @@ async function main() {
             car.z = newZ;
          }
 
-         // Loop infinito: verifica movimento real (speed * direction)
          const velocidadeReal = car.speed * car.direction;
          if (velocidadeReal > 0 && car.z > car.maxZ) {
             car.z = car.minZ;
@@ -1452,12 +1312,10 @@ async function main() {
 
       drawTerrain();
 
-      // Desenha as árvores
       trees.forEach((tree) => {
          drawObj(tree);
       });
 
-      // Desenha todos os carros
       cars.forEach((car) => {
          drawObj(car);
       });
@@ -1469,10 +1327,8 @@ async function main() {
       requestAnimationFrame(drawScene);
    }
 
-   // Inicializa o terreno ao redor da posição inicial do player (-12)
    initTerrain(-12);
 
-   // Inicia a animação (requestAnimationFrame passa o timestamp)
    requestAnimationFrame(drawScene);
 }
 
@@ -1504,7 +1360,6 @@ function degToRad(d) {
    return (d * Math.PI) / 180;
 }
 
-// Função de interpolação linear simples
 function lerp(start, end, t) {
    return start * (1 - t) + end * t;
 }
@@ -1512,32 +1367,25 @@ function lerp(start, end, t) {
 function updatePlayerJump(player, dt) {
    if (!player.isMoving) return;
 
-   // Incrementa o tempo
    player.moveTime += dt;
 
    // Calcula o progresso (0.0 a 1.0)
    let t = player.moveTime / player.moveDuration;
 
    if (t >= 1.0) {
-      // Pulo terminou: crava os valores finais
+      // Crava os valores finais qnd pulo termina
       t = 1.0;
       player.isMoving = false;
-      player.y = 0; // Garante que volta para o chão
+      player.y = 0;
       player.x = player.targetX;
       player.z = player.targetZ;
    } else {
       // Durante o pulo
-        
-      // Movimento Linear no X e Z
       player.x = lerp(player.startX, player.targetX, t);
       player.z = lerp(player.startZ, player.targetZ, t);
-
-      // Movimento Curvo no Y (Pulo)
+      // Movimento Curvo de pulo no Y
       // Math.sin(t * Math.PI) cria um arco que vai de 0 -> 1 -> 0 quando t vai de 0 -> 1
       player.y = Math.sin(t * Math.PI) * player.jumpHeight;
-        
-      // Opcional: Efeito de "esmagar e esticar" (squash & stretch) na escala
-      // player.scale = 0.55 + Math.sin(t * Math.PI) * 0.1; 
    }
 }
 
