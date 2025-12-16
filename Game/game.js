@@ -26,7 +26,6 @@ const vertexShaderSource = `
     }
 `;
 
-
 const fragmentShaderSource = `
     precision mediump float;
     
@@ -167,7 +166,6 @@ async function loadOBJFromFile(filePath) {
       throw error;
    }
 }
-
 
 function parseOBJ(text) {
    const positions = [];
@@ -505,7 +503,7 @@ async function main() {
 
       if (moved) {
          let isValidMove = true;
-        
+
          // Verifica limites laterais no eixo Z
          if (proposedZ < -boundaryLimit || proposedZ > boundaryLimit) {
             isValidMove = false;
@@ -551,7 +549,7 @@ async function main() {
       targetZ: 0,
       moveTime: 0, // Tempo decorrido do pulo atual
       moveDuration: 0.15,
-      jumpHeight: 0.5
+      jumpHeight: 0.5,
    };
 
    // MAPA
@@ -602,7 +600,7 @@ async function main() {
       // resets
       isPaused = false;
       isGameOver = false;
-      
+
       player.x = -5; // Posição do x hardcoded
       player.z = 0;
       player.y = 0; // Pra ele não reiniciar pulando no ar
@@ -808,7 +806,6 @@ async function main() {
 
          gl.uniform3fv(colorUniformLocation, new Float32Array([1.0, 1.0, 1.0]));
 
-
          gl.activeTexture(gl.TEXTURE0);
          gl.bindTexture(gl.TEXTURE_2D, texture);
          gl.uniform1i(textureUniformLocation, 0);
@@ -902,10 +899,8 @@ async function main() {
       return texture;
    }
 
-
    const texture = loadTexture(gl, "../OBJ/Textures/holiday_colormap.png");
    let useTexture = true;
-
 
    const objFiles = [
       "../OBJ/car1.obj",
@@ -962,7 +957,7 @@ async function main() {
          console.warn("Não foi possível carregar ${file}:", error);
       }
    }
-   
+
    if (models.length === 0) {
       console.error("Nenhum modelo foi carregado!");
       return;
@@ -1120,7 +1115,6 @@ async function main() {
             return distA - distB;
          });
 
-
       let lightIndex = 0;
       for (let i = 0; i < Math.min(visibleCars.length, 6); i++) {
          const car = visibleCars[i];
@@ -1130,7 +1124,6 @@ async function main() {
          // Como o carro anda em Z, a "frente" depende da direção
          const lx1 = car.x;
          const ly1 = car.y + 0.5; // Altura do farol
-
 
          // Direção do facho de luz
          const lightDir = [0.0, -0.2, dirZ]; // Levemente para baixo e para frente Z
@@ -1222,21 +1215,13 @@ async function main() {
 
       let Pref = [targetX, targetY, targetZ];
 
-      let P0 = [
-         targetX - 10,
-         targetY + 15.0,
-         targetZ + 1.0,
-      ];
+      let P0 = [targetX - 10, targetY + 15.0, targetZ + 1.0];
 
       if (projectionMode === "perspective") {
-         const distanceBack = 18.0;
-         const heightUp = 22.0;
+         const distanceBack = 10.0;
+         const heightUp = 5.0;
 
-         P0 = [
-            targetX - distanceBack,
-            targetY + heightUp,
-            targetZ,
-         ];
+         P0 = [targetX - distanceBack, targetY + heightUp, targetZ];
 
          Pref = [targetX + 2.0, 0.0, 0.0];
 
